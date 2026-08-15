@@ -52,6 +52,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+case "$p12_path" in
+  \~/*) p12_path=$HOME/${p12_path#\~/} ;;
+esac
+
 if [ "$(uname -s)" != Darwin ]; then
   printf '%s\n' 'Run this script on the Mac whose Keychain contains the signing identity.' >&2
   exit 2
