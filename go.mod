@@ -10,7 +10,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/charmbracelet/x/term v0.2.2
 	golang.org/x/sys v0.47.0
-	golang.org/x/text v0.39.0
+	golang.org/x/text v0.41.0
 	modernc.org/sqlite v1.56.0
 )
 
