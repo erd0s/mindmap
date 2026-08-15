@@ -4,7 +4,7 @@ The first public release publishes a signed universal macOS desktop app, cross-p
 
 ## Release controls
 
-The upstream repository protects `main` and `v*` tags with active rulesets. Its `release` environment accepts only `v*` tags and requires approval from the maintainer who owns the signing credentials. Fork maintainers must create equivalent controls before adding credentials. GitHub applies environment protection rules before a job can read its environment secrets.
+The upstream repository protects `main` and `v*` tags with active rulesets. Its `release` environment accepts protected `main` and `v*` tags and requires approval from the maintainer who owns the signing credentials. `main` is permitted only so a manual, non-publishing release preflight can exercise the real signing and notarization path. Fork maintainers must create equivalent controls before adding credentials. GitHub applies environment protection rules before a job can read its environment secrets.
 
 Verify the upstream controls with:
 
@@ -73,6 +73,8 @@ make macos-preflight
 ```
 
 Review `CHANGELOG.md`, confirm that the package version and plugin manifests agree, and replace both screenshot placeholders in `docs/images/`.
+
+Run the `release` workflow manually from `main` before creating the version tag. Approve its protected `release` environment only after confirming the run uses the expected commit. The workflow exercises the production signing, notarization, stapling, Gatekeeper, manifest, and attestation steps, then uploads a `release-candidate-VERSION` artifact. A manual run cannot publish a GitHub Release.
 
 ## Publish
 

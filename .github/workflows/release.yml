@@ -1,6 +1,7 @@
 name: release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - "v*"
@@ -10,18 +11,26 @@ permissions:
 
 jobs:
   version:
-    name: tag matches package version
+    name: release version and ref
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.package.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Verify release tag
+      - name: Verify release version and ref
+        id: package
         run: |
           version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)
-          test -n "$version"
-          test "$GITHUB_REF_NAME" = "v$version" || {
-            echo "Tag $GITHUB_REF_NAME does not match package version $version." >&2
-            exit 1
-          }
+          printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'
+          case "$GITHUB_EVENT_NAME:$GITHUB_REF" in
+            push:refs/tags/v"$version") ;;
+            workflow_dispatch:refs/heads/main) ;;
+            *)
+              echo "Release runs require tag v$version or a manual run from main; got $GITHUB_REF." >&2
+              exit 1
+              ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
   validate:
     name: release gate
@@ -210,11 +219,12 @@ jobs:
           path: release-artifacts/*
           if-no-files-found: error
 
-  publish:
-    needs: [validate, terminal, macos-desktop, plugins]
+  assemble:
+    name: attest release candidate
+    needs: [version, validate, terminal, macos-desktop, plugins]
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       id-token: write
       attestations: write
     steps:
@@ -224,8 +234,10 @@ jobs:
           merge-multiple: true
       - name: Validate release manifest and write checksums
         working-directory: release
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
         run: |
-          version=${GITHUB_REF_NAME#v}
+          version=$RELEASE_VERSION
           expected="$RUNNER_TEMP/expected-release-files.txt"
           actual="$RUNNER_TEMP/actual-release-files.txt"
           printf '%s\n' \
@@ -266,6 +278,25 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: "release/*"
+      - name: Upload complete release candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-candidate-${{ needs.version.outputs.version }}
+          path: release/*
+          if-no-files-found: error
+
+  publish:
+    name: publish GitHub release
+    if: github.event_name == 'push'
+    needs: [version, assemble]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-candidate-${{ needs.version.outputs.version }}
+          path: release
       - name: Publish GitHub release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
