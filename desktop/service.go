@@ -73,7 +73,7 @@ func (s *DesktopService) DeleteSubtree(projectID int64, itemID string, confirmed
 	return result, err
 }
 
-func (s *DesktopService) NewProjectWindow(projectID int64) error {
+func (s *DesktopService) newProjectWindow(projectID int64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	snapshot, err := s.repository.LoadSnapshot(ctx, projectID)
@@ -93,7 +93,7 @@ func (s *DesktopService) NewWindowForRoot(root string) error {
 	if err != nil {
 		return err
 	}
-	return s.NewProjectWindow(project.ID)
+	return s.newProjectWindow(project.ID)
 }
 
 func (s *DesktopService) newWindow(title, route string) {

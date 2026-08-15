@@ -10,10 +10,6 @@ export function NewPickerWindow() {
   return $Call.ByID(3897382207)
 }
 
-export function NewProjectWindow(projectID) {
-  return $Call.ByID(821774226, projectID)
-}
-
 export function Projects() {
   return $Call.ByID(1648432611)
 }

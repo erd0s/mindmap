@@ -7,7 +7,9 @@ describe('desktop interaction styles', () => {
   it('uses Wails drag regions while leaving title-bar controls interactive', () => {
     expect(styles).toMatch(/\.topbar\s*\{[^}]*--wails-draggable:\s*drag;/s)
     expect(styles).toMatch(/\.topbar button\s*\{[^}]*--wails-draggable:\s*no-drag;/s)
+    expect(styles).toMatch(/\.picker-shell\s*\{[^}]*--wails-draggable:\s*drag;/s)
     expect(styles).toMatch(/\.picker-header\s*\{[^}]*--wails-draggable:\s*drag;/s)
+    expect(styles).toMatch(/\.project-list\s*\{[^}]*--wails-draggable:\s*no-drag;/s)
   })
 
   it('shows keyboard focus on graph nodes', () => {

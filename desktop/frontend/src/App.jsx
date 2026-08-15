@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Background, Panel, ReactFlow, useReactFlow } from '@xyflow/react'
 import ThoughtNode from './ThoughtNode.jsx'
 import { backend } from './backend.js'
-import { selectionFromNodeChanges, snapshotRevision, subtreeConfirmation } from './graphState.js'
+import { isOpenShortcut, selectionFromNodeChanges, snapshotRevision, subtreeConfirmation } from './graphState.js'
 import { layoutGraph } from './layout.js'
 
 const nodeTypes = { thought: ThoughtNode }
@@ -44,6 +44,14 @@ function Picker() {
     return backend.onChanged(reload)
   }, [reload])
 
+  useEffect(() => {
+    const blockOpenShortcut = (event) => {
+      if (isOpenShortcut(event)) event.preventDefault()
+    }
+    window.addEventListener('keydown', blockOpenShortcut)
+    return () => window.removeEventListener('keydown', blockOpenShortcut)
+  }, [])
+
   const choose = (project) => {
     window.location.search = `?project=${project.id}`
   }
@@ -53,8 +61,7 @@ function Picker() {
       <header className="picker-header">
         <div className="mark" aria-hidden="true">m</div>
         <div>
-          <h1>Open a Mindmap project</h1>
-          <p>Each project opens in its own window.</p>
+          <h1>Open a coding session</h1>
         </div>
       </header>
       <main className="project-list" aria-busy={!projects && !error}>
@@ -77,15 +84,11 @@ function Picker() {
         ))}
         {projects?.length === 0 && (
           <div className="picker-empty">
-            <strong>No projects yet.</strong>
+            <strong>No coding sessions yet.</strong>
             <span>In a project directory, run <code>mindmap start</code>, then begin a new agent session.</span>
           </div>
         )}
       </main>
-      <footer className="picker-footer">
-        <span>Local data only</span>
-        <span><kbd>⌘</kbd><kbd>O</kbd> opens another picker</span>
-      </footer>
     </div>
   )
 }
@@ -219,14 +222,26 @@ function ConceptMap({ projectID }) {
   const selected = items.find((item) => item.id === selectedId) || null
   const titles = useMemo(() => Object.fromEntries(items.map((item) => [item.id, item.title])), [items])
   const children = selected ? items.filter((item) => item.parent_id === selected.id) : []
-  const openWindow = async (action) => {
+  const openWindow = useCallback(async (action) => {
     try {
       await action()
       setWindowError(null)
     } catch (caught) {
       setWindowError(caught)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    const handleOpenShortcut = (event) => {
+      if (isOpenShortcut(event)) {
+        event.preventDefault()
+        void openWindow(backend.newPickerWindow)
+      }
+    }
+    window.addEventListener('keydown', handleOpenShortcut)
+    return () => window.removeEventListener('keydown', handleOpenShortcut)
+  }, [openWindow])
+
   const confirmDelete = async () => {
     setDeleting(true)
     setDeleteError(null)
@@ -250,7 +265,6 @@ function ConceptMap({ projectID }) {
         {snapshot && <span className="counts">{items.length} concepts · {graph.frontierCount} frontier</span>}
         <span className="spacer" />
         <button className="button" onClick={() => openWindow(backend.newPickerWindow)}>open…</button>
-        <button className="button" onClick={() => openWindow(() => backend.newProjectWindow(projectID))}>new window</button>
         <span className="divider" />
         <button className={`button${direction === 'LR' ? ' active' : ''}`} onClick={() => setDirection('LR')}>horizontal</button>
         <button className={`button${direction === 'TB' ? ' active' : ''}`} onClick={() => setDirection('TB')}>vertical</button>
@@ -274,7 +288,9 @@ function ConceptMap({ projectID }) {
             minZoom={0.15}
             nodesConnectable={false}
             nodesDraggable={false}
+            edgesFocusable={false}
             deleteKeyCode={null}
+            proOptions={{ hideAttribution: true }}
             onNodesChange={(changes) => {
               setSelectedId((current) => selectionFromNodeChanges(changes, current))
             }}

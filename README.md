@@ -59,7 +59,7 @@ Open a local coding-agent session inside a project, then invoke Mindmap:
 
 Codex also accepts `$mindmap start`, `$mindmap sync`, `$mindmap status`, and `$mindmap stop`.
 
-Run `mindmap` in the project for the terminal view, or open Mindmap on macOS and choose the project from its custom picker. Use <kbd>⌘</kbd><kbd>O</kbd> to open another picker; every project opens in its own window. Both views update after the agent commits a graph change.
+Run `mindmap` in the project for the terminal view, or open Mindmap on macOS and choose a coding session from its custom picker. Use <kbd>⌘</kbd><kbd>O</kbd> or <kbd>⌘</kbd><kbd>N</kbd> to open another session; every selection opens in its own window. Both views update after the agent commits a graph change.
 
 Mindmap remains active for the whole project directory until you stop it. New local Codex or Claude sessions beneath that directory receive the current map automatically.
 

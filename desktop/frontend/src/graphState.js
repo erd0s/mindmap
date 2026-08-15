@@ -13,6 +13,16 @@ export function selectionFromNodeChanges(changes, currentID) {
   return changes.some((change) => change.type === 'select') ? null : currentID
 }
 
+export function isOpenShortcut(event) {
+  return Boolean(
+    event.metaKey &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.repeat &&
+    ['n', 'o'].includes(event.key.toLowerCase()),
+  )
+}
+
 export function subtreeConfirmation(items, itemID) {
   const byParent = new Map()
   const byID = new Map(items.map((item) => [item.id, item]))

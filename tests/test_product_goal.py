@@ -46,6 +46,11 @@ class ProductGoalTests(unittest.TestCase):
         self.assertIn("Delete branch", source)
         self.assertIn("including every descendant", source)
         self.assertIn("backend.onChanged", source)
+        self.assertIn("edgesFocusable={false}", source)
+        self.assertIn("proOptions={{ hideAttribution: true }}", source)
+        self.assertIn("Open a coding session", source)
+        self.assertNotIn("newProjectWindow", source)
+        self.assertNotIn("Local data only", source)
         self.assertNotIn("fetch(", source)
 
 

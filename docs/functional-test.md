@@ -78,7 +78,7 @@ In the disposable macOS user account described above, recreate a test project an
 1. Download the release DMG and verify its SHA-256 entry in `checksums.txt`.
 2. Confirm Gatekeeper accepts the app and `spctl --assess --type execute -vv /Applications/Mindmap.app` reports an accepted, notarized build.
 3. Open the project picker and choose a map.
-4. Press <kbd>⌘</kbd><kbd>O</kbd>, open a second project, and also open the first project in another window.
+4. Press <kbd>⌘</kbd><kbd>O</kbd> and <kbd>⌘</kbd><kbd>N</kbd>, open a second project, and also open the first project in another window.
 5. While Mindmap is running, execute `mindmap open --root /path/to/project` twice. Confirm that one app process owns the resulting windows.
 6. Pan and zoom the second project's graph, then record a change in the first project. Confirm that the second window keeps its viewport.
 7. Use Tab and Enter or Space to open a node. Confirm that long, multiline, and Unicode titles stay inside their pills.

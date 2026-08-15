@@ -73,10 +73,6 @@ func run() error {
 				}
 			},
 		},
-		KeyBindings: map[string]func(window application.Window){
-			"cmd+o":  func(application.Window) { service.NewPickerWindow() },
-			"ctrl+o": func(application.Window) { service.NewPickerWindow() },
-		},
 	})
 	service.SetApplication(app)
 	if *projectRoot == "" {

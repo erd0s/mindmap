@@ -7,7 +7,6 @@ import "github.com/wailsapp/wails/v3/pkg/application"
 func init() {
 	application.RegisterBindingMethodID((*DesktopService).DeleteSubtree, 3681081292)
 	application.RegisterBindingMethodID((*DesktopService).NewPickerWindow, 3897382207)
-	application.RegisterBindingMethodID((*DesktopService).NewProjectWindow, 821774226)
 	application.RegisterBindingMethodID((*DesktopService).Projects, 1648432611)
 	application.RegisterBindingMethodID((*DesktopService).Snapshot, 2093151385)
 }

@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { selectionFromNodeChanges, snapshotRevision, subtreeConfirmation } from './graphState.js'
+import { isOpenShortcut, selectionFromNodeChanges, snapshotRevision, subtreeConfirmation } from './graphState.js'
+
+describe('isOpenShortcut', () => {
+  it('accepts command O and command N without modifier aliases', () => {
+    expect(isOpenShortcut({ key: 'o', metaKey: true })).toBe(true)
+    expect(isOpenShortcut({ key: 'N', metaKey: true })).toBe(true)
+    expect(isOpenShortcut({ key: 'o', metaKey: true, repeat: true })).toBe(false)
+    expect(isOpenShortcut({ key: 'o', metaKey: true, altKey: true })).toBe(false)
+    expect(isOpenShortcut({ key: 'o', ctrlKey: true })).toBe(false)
+  })
+})
 
 describe('selectionFromNodeChanges', () => {
   it('opens the node selected through React Flow keyboard handling', () => {
