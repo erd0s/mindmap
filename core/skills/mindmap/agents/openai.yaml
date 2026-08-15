@@ -1,0 +1,7 @@
+interface:
+  display_name: "Mindmap"
+  short_description: "Compress sessions into a causal concept tree"
+  brand_color: "#7C3AED"
+  default_prompt: "$mindmap:manage start"
+policy:
+  allow_implicit_invocation: false

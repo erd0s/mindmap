@@ -1,0 +1,48 @@
+{
+  "target_id": "delivery-reliability",
+  "decoy_id": "dashboard-polish",
+  "expected_terms": ["retry", "exponential", "jitter"],
+  "prompt": "Continue the webhook delivery reliability work. Add a short RETRY_POLICY.md design note choosing exponential backoff with decorrelated jitter. This is a genuinely new decision that grew out of the continuing reliability work, so preserve it as its own concept in the active Mindmap before finishing. Do not start or sync Mindmap; use the active context already supplied to this fresh session and checkpoint the turn normally.",
+  "nodes": [
+    {
+      "op": "upsert",
+      "id": "ship-webhooks",
+      "title": "Ship dependable webhook delivery",
+      "summary": "Deliver signed webhooks reliably while keeping their operation understandable.",
+      "resume": "Continue through one of the open product branches.",
+      "state": "open",
+      "kind": "goal",
+      "parent_id": null
+    },
+    {
+      "op": "upsert",
+      "id": "delivery-reliability",
+      "title": "Improve webhook delivery reliability",
+      "summary": "Failures need a deliberate retry policy rather than immediate repeated delivery.",
+      "resume": "Continue by choosing and documenting a concrete retry policy.",
+      "state": "open",
+      "kind": "thread",
+      "parent_id": "ship-webhooks"
+    },
+    {
+      "op": "upsert",
+      "id": "dashboard-polish",
+      "title": "Polish the delivery dashboard",
+      "summary": "The monitoring view still needs a clearer visual hierarchy.",
+      "resume": "Later choose the dashboard colour and spacing system.",
+      "state": "planned",
+      "kind": "task",
+      "parent_id": "ship-webhooks"
+    },
+    {
+      "op": "upsert",
+      "id": "signed-payloads",
+      "title": "Sign outgoing webhook payloads",
+      "summary": "HMAC signatures were selected and implemented for receiver verification.",
+      "resume": "",
+      "state": "settled",
+      "kind": "decision",
+      "parent_id": "ship-webhooks"
+    }
+  ]
+}

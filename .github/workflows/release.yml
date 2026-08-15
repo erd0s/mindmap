@@ -1,0 +1,274 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: tag matches package version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Verify release tag
+        run: |
+          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)
+          test -n "$version"
+          test "$GITHUB_REF_NAME" = "v$version" || {
+            echo "Tag $GITHUB_REF_NAME does not match package version $version." >&2
+            exit 1
+          }
+
+  validate:
+    name: release gate
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.25.13"
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - run: npm ci --prefix desktop/frontend
+      - run: npm install --global @anthropic-ai/claude-code@2.1.228 @openai/codex@0.147.0
+      - run: MINDMAP_REQUIRE_HOST_VALIDATORS=1 make validate
+      - run: make audit
+
+  terminal:
+    name: terminal ${{ matrix.os }}/${{ matrix.arch }}
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: darwin, arch: amd64 }
+          - { os: darwin, arch: arm64 }
+          - { os: freebsd, arch: amd64 }
+          - { os: freebsd, arch: arm64 }
+          - { os: linux, arch: "386" }
+          - { os: linux, arch: amd64 }
+          - { os: linux, arch: arm }
+          - { os: linux, arch: arm64 }
+          - { os: linux, arch: loong64 }
+          - { os: linux, arch: ppc64le }
+          - { os: linux, arch: riscv64 }
+          - { os: linux, arch: s390x }
+          - { os: openbsd, arch: amd64 }
+          - { os: openbsd, arch: arm64 }
+          - { os: windows, arch: "386" }
+          - { os: windows, arch: amd64 }
+          - { os: windows, arch: arm64 }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.25.13"
+          cache: true
+      - run: ./scripts/build_tui.sh "${{ matrix.os }}/${{ matrix.arch }}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: terminal-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/tui/mindmap_*
+          if-no-files-found: error
+
+  macos-desktop:
+    name: signed macOS desktop
+    needs: [version, validate]
+    runs-on: macos-14
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.25.13"
+          cache-dependency-path: |
+            go.sum
+            desktop/go.sum
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - name: Build unsigned universal app
+        run: ./scripts/build_macos_app.sh
+      - name: Require Apple signing secrets
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          for value in "$CERTIFICATE" "$CERTIFICATE_PASSWORD" "$SIGNING_IDENTITY" "$APPLE_ID" "$APPLE_TEAM_ID" "$APPLE_APP_PASSWORD"; do
+            test -n "$value" || { echo "A required Apple signing secret is missing." >&2; exit 1; }
+          done
+      - name: Import signing certificate
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/mindmap-signing.keychain-db"
+          certificate="$RUNNER_TEMP/developer-id.p12"
+          prior_keychains="$RUNNER_TEMP/mindmap-user-keychains.txt"
+          security list-keychains -d user > "$prior_keychains"
+          printf '%s' "$CERTIFICATE" | base64 -D > "$certificate"
+          security create-keychain -p actions "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p actions "$keychain"
+          security import "$certificate" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          existing_keychains=()
+          while read -r existing_keychain; do
+            existing_keychain=${existing_keychain#\"}
+            existing_keychain=${existing_keychain%\"}
+            existing_keychains+=("$existing_keychain")
+          done < "$prior_keychains"
+          security list-keychains -d user -s "$keychain" "${existing_keychains[@]}"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions "$keychain"
+      - name: Sign and notarize
+        env:
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          app="dist/macos/Mindmap.app"
+          codesign --force --deep --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          ditto -c -k --keepParent "$app" "$RUNNER_TEMP/Mindmap-notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/Mindmap-notarize.zip" \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple "$app"
+          xcrun stapler validate "$app"
+          dmg_root="$RUNNER_TEMP/mindmap-dmg"
+          mkdir -p "$dmg_root"
+          ditto "$app" "$dmg_root/Mindmap.app"
+          ln -s /Applications "$dmg_root/Applications"
+          hdiutil create -volname Mindmap -srcfolder "$dmg_root" -ov -format UDZO dist/macos/mindmap_macos_universal.dmg
+          codesign --force --timestamp --sign "$SIGNING_IDENTITY" dist/macos/mindmap_macos_universal.dmg
+          xcrun notarytool submit dist/macos/mindmap_macos_universal.dmg \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple dist/macos/mindmap_macos_universal.dmg
+          xcrun stapler validate dist/macos/mindmap_macos_universal.dmg
+          spctl --assess --type execute --verbose=2 "$app"
+          spctl --assess --type open --context context:primary-signature --verbose=2 dist/macos/mindmap_macos_universal.dmg
+      - name: Remove signing credentials
+        if: always()
+        run: |
+          keychain="$RUNNER_TEMP/mindmap-signing.keychain-db"
+          certificate="$RUNNER_TEMP/developer-id.p12"
+          prior_keychains="$RUNNER_TEMP/mindmap-user-keychains.txt"
+          if [ -f "$prior_keychains" ]; then
+            existing_keychains=()
+            while read -r existing_keychain; do
+              existing_keychain=${existing_keychain#\"}
+              existing_keychain=${existing_keychain%\"}
+              existing_keychains+=("$existing_keychain")
+            done < "$prior_keychains"
+            if [ "${#existing_keychains[@]}" -gt 0 ]; then
+              security list-keychains -d user -s "${existing_keychains[@]}"
+            fi
+          fi
+          security delete-keychain "$keychain" 2>/dev/null || true
+          rm -f "$certificate" "$prior_keychains"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-desktop
+          path: dist/macos/mindmap_macos_universal.dmg
+          if-no-files-found: error
+
+  plugins:
+    name: agent plugins
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: python3 scripts/build_plugins.py
+      - name: Stage flat release artifacts
+        run: |
+          mkdir release-artifacts
+          cp dist/mindmap-*.zip LICENSE THIRD_PARTY_NOTICES.txt release-artifacts/
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: plugins
+          path: release-artifacts/*
+          if-no-files-found: error
+
+  publish:
+    needs: [validate, terminal, macos-desktop, plugins]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: release
+          merge-multiple: true
+      - name: Validate release manifest and write checksums
+        working-directory: release
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          expected="$RUNNER_TEMP/expected-release-files.txt"
+          actual="$RUNNER_TEMP/actual-release-files.txt"
+          printf '%s\n' \
+            LICENSE \
+            THIRD_PARTY_NOTICES.txt \
+            "mindmap-claude-$version.zip" \
+            "mindmap-codex-$version.zip" \
+            mindmap_darwin_amd64 \
+            mindmap_darwin_arm64 \
+            mindmap_freebsd_amd64 \
+            mindmap_freebsd_arm64 \
+            mindmap_linux_386 \
+            mindmap_linux_amd64 \
+            mindmap_linux_arm64 \
+            mindmap_linux_armv7 \
+            mindmap_linux_loong64 \
+            mindmap_linux_ppc64le \
+            mindmap_linux_riscv64 \
+            mindmap_linux_s390x \
+            mindmap_macos_universal.dmg \
+            mindmap_openbsd_amd64 \
+            mindmap_openbsd_arm64 \
+            mindmap_windows_386.exe \
+            mindmap_windows_amd64.exe \
+            mindmap_windows_arm64.exe \
+            | LC_ALL=C sort > "$expected"
+          find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort > "$actual"
+          diff -u "$expected" "$actual"
+          while IFS= read -r artifact; do
+            sha256sum -- "$artifact"
+          done < "$expected" > checksums.txt
+          sha256sum --check checksums.txt
+          printf '%s\n' checksums.txt >> "$expected"
+          LC_ALL=C sort -o "$expected" "$expected"
+          find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort > "$actual"
+          diff -u "$expected" "$actual"
+      - name: Attest release artifacts
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: "release/*"
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release/*

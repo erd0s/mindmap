@@ -1,0 +1,12 @@
+{
+  "nodes": [
+    {"id": "recover-project-thinking", "title": "Recover project thinking quickly", "state": "open", "kind": "goal", "parent_id": null},
+    {"id": "causal-concept-tree", "title": "Represent thinking as a causal concept tree", "state": "settled", "kind": "decision", "parent_id": "recover-project-thinking"},
+    {"id": "semantic-compression", "title": "Compress discussion into meaningful concepts", "state": "open", "kind": "thread", "parent_id": "causal-concept-tree"},
+    {"id": "react-flow-view", "title": "Use a simple React Flow view", "state": "settled", "kind": "decision", "parent_id": "causal-concept-tree"},
+    {"id": "frontier-states", "title": "Show open, planned, and settled branches", "state": "settled", "kind": "decision", "parent_id": "causal-concept-tree"},
+    {"id": "cross-session-memory", "title": "Keep on-demand memory across agent sessions", "state": "settled", "kind": "decision", "parent_id": "recover-project-thinking"},
+    {"id": "mid-session-backfill", "title": "Backfill the active session", "state": "open", "kind": "thread", "parent_id": "cross-session-memory"},
+    {"id": "tailnet-project-index", "title": "Browse project paths over Tailnet", "state": "planned", "kind": "task", "parent_id": "cross-session-memory"}
+  ]
+}

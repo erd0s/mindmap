@@ -1,0 +1,15 @@
+{
+  "name": "erd0s-mindmap",
+  "description": "Local-first project maps for Codex and Claude Code.",
+  "owner": {
+    "name": "erd0s"
+  },
+  "plugins": [
+    {
+      "name": "mindmap",
+      "source": "./plugins/claude/mindmap",
+      "description": "A small causal concept tree distilled from coding-agent sessions.",
+      "version": "0.3.0"
+    }
+  ]
+}

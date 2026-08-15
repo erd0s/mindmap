@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="720" viewBox="0 0 1440 720" role="img" aria-labelledby="title desc">
+  <title id="title">Desktop screenshot placeholder</title>
+  <desc id="desc">Replace this image with Codex or Claude Desktop beside Mindmap Desktop.</desc>
+  <rect width="1440" height="720" fill="#09090b"/>
+  <rect x="48" y="48" width="650" height="624" rx="16" fill="#18181b" stroke="#3f3f46"/>
+  <rect x="742" y="48" width="650" height="624" rx="16" fill="#18181b" stroke="#3f3f46"/>
+  <text x="373" y="330" text-anchor="middle" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="30">Codex or Claude Desktop</text>
+  <text x="1067" y="330" text-anchor="middle" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="30">Mindmap Desktop</text>
+  <text x="720" y="694" text-anchor="middle" fill="#71717a" font-family="system-ui,sans-serif" font-size="18">Replace with a side-by-side product screenshot</text>
+</svg>

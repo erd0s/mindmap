@@ -1,0 +1,30 @@
+{
+  "name": "mindmap",
+  "version": "0.3.0",
+  "description": "A small causal concept tree distilled from Codex and Claude Code sessions.",
+  "author": {
+    "name": "erd0s",
+    "url": "https://github.com/erd0s"
+  },
+  "homepage": "https://github.com/erd0s/mindmap",
+  "repository": "https://github.com/erd0s/mindmap",
+  "keywords": ["concept-map", "causal-tree", "project-memory", "sessions"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Mindmap",
+    "shortDescription": "Compress sessions into a causal concept tree.",
+    "longDescription": "Distil plans, explored ideas, open questions, and conclusions from Codex and Claude Code into one small causal tree.",
+    "developerName": "erd0s",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://github.com/erd0s/mindmap",
+    "defaultPrompt": [
+      "$mindmap:manage start",
+      "$mindmap:manage sync",
+      "$mindmap:manage status"
+    ],
+    "brandColor": "#7C3AED",
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/icon.svg"
+  }
+}

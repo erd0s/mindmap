@@ -1,0 +1,12 @@
+[
+  {
+    "name": "reserved and UTF-8 bytes",
+    "relative_path": "A+B:C@D&E=F$G café",
+    "route": "/a%2Bb%3Ac%40d%26e%3Df%24g%20caf%C3%A9"
+  },
+  {
+    "name": "full Unicode lowercase expansion",
+    "relative_path": "İstanbul",
+    "route": "/i%CC%87stanbul"
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "messages": [
+    {"role": "user", "content": "I want a project memory I can switch on halfway through a coding session."},
+    {"role": "assistant", "content": "It can import the current transcript, then stay active for later Codex and Claude sessions."},
+    {"role": "user", "content": "It should be on demand and persist for a directory until I explicitly stop it."},
+    {"role": "user", "content": "Eventually I want a Tailnet home page listing project paths, but we have not built that part yet."},
+    {"role": "assistant", "content": "A shared SQLite store can hold activation, sessions, and the durable map."},
+    {"role": "user", "content": "The page should use React Flow and show how ideas branched out."},
+    {"role": "assistant", "content": "Open leaves can glow as the frontier; settled branches can stay quiet."},
+    {"role": "user", "content": "The current implementation is wrong because it is basically a chat log."},
+    {"role": "user", "content": "The point is to compress what was covered, not covered, planned, and unresolved into nodes."},
+    {"role": "assistant", "content": "We will make the project page a causal concept tree and keep transcripts only as source evidence."},
+    {"role": "user", "content": "Keep the design simple like the original, with no flashy sales text."},
+    {"role": "assistant", "content": "The interface will be a compact header, graph, controls, and node inspector."}
+  ]
+}

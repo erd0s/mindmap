@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="720" viewBox="0 0 1440 720" role="img" aria-labelledby="title desc">
+  <title id="title">Terminal screenshot placeholder</title>
+  <desc id="desc">Replace this image with Codex or Claude CLI beside the Mindmap terminal viewer.</desc>
+  <rect width="1440" height="720" fill="#09090b"/>
+  <rect x="48" y="48" width="650" height="624" rx="12" fill="#111113" stroke="#3f3f46"/>
+  <rect x="742" y="48" width="650" height="624" rx="12" fill="#111113" stroke="#3f3f46"/>
+  <text x="373" y="330" text-anchor="middle" fill="#a1a1aa" font-family="ui-monospace,monospace" font-size="28">Codex or Claude CLI</text>
+  <text x="1067" y="330" text-anchor="middle" fill="#a1a1aa" font-family="ui-monospace,monospace" font-size="28">mindmap</text>
+  <text x="720" y="694" text-anchor="middle" fill="#71717a" font-family="system-ui,sans-serif" font-size="18">Replace with a side-by-side terminal screenshot</text>
+</svg>

@@ -1,0 +1,5 @@
+{"timestamp":"2026-08-12T09:00:00Z","type":"session_meta","payload":{"session_id":"codex-fixture","cwd":"/home/test/Dev/example"}}
+{"timestamp":"2026-08-12T09:00:01Z","type":"response_item","payload":{"type":"message","id":"c-user-1","role":"user","content":[{"type":"input_text","text":"Plan the Tailnet project hub, but do not build it yet."}]}}
+{"timestamp":"2026-08-12T09:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total":10}}}
+{"timestamp":"2026-08-12T09:00:03Z","type":"response_item","payload":{"type":"message","id":"c-assistant-1","role":"assistant","content":[{"type":"output_text","text":"I will keep that as planned work."}]}}
+{"timestamp":"2026-08-12T09:00:04Z","type":"response_item","payload":{"type":"message","id":"c-developer-1","role":"developer","content":[{"type":"input_text","text":"Hidden instructions"}]}}

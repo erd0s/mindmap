@@ -1,0 +1,3 @@
+{"type":"user","uuid":"cl-user-1","timestamp":"2026-08-12T09:10:00Z","message":{"role":"user","content":[{"type":"text","text":"Build the shared session tracker."}]}}
+{"type":"assistant","uuid":"cl-assistant-1","timestamp":"2026-08-12T09:10:02Z","message":{"role":"assistant","content":[{"type":"text","text":"The shared tracker is now open work."},{"type":"tool_use","id":"tool-1","name":"Bash","input":{"command":"true"}}]}}
+{"type":"user","uuid":"cl-tool-result","timestamp":"2026-08-12T09:10:03Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-1","content":"ok"}]}}

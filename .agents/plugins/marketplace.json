@@ -1,0 +1,20 @@
+{
+  "name": "erd0s-mindmap",
+  "interface": {
+    "displayName": "Mindmap"
+  },
+  "plugins": [
+    {
+      "name": "mindmap",
+      "source": {
+        "source": "local",
+        "path": "./plugins/mindmap"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
