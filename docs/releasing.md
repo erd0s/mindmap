@@ -2,11 +2,33 @@
 
 The first public release publishes a signed universal macOS desktop app, cross-platform terminal binaries, two agent-plugin packages, and SHA-256 checksums. Windows and Linux desktop packages are intentionally deferred.
 
+## Release controls
+
+The upstream repository protects `main` and `v*` tags with active rulesets. Its `release` environment accepts only `v*` tags and requires approval from the maintainer who owns the signing credentials. Fork maintainers must create equivalent controls before adding credentials. GitHub applies environment protection rules before a job can read its environment secrets.
+
+Verify the upstream controls with:
+
+```sh
+gh api repos/erd0s/mindmap/environments/release
+gh api repos/erd0s/mindmap/environments/release/deployment-branch-policies
+gh api repos/erd0s/mindmap/rulesets
+```
+
+See GitHub's documentation for [deployment environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments) and [repository rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository).
+
 ## Apple signing setup
 
-Create a **Developer ID Application** certificate in the Apple Developer account, install it in Keychain Access, and export the certificate plus private key as a password-protected `.p12` file. Create an app-specific password for the Apple ID used by the workflow.
+The Apple Developer Account Holder must create a **Developer ID Application** certificate. Install it in Keychain Access, then export the certificate and its private key as a password-protected `.p12` file. Also create an app-specific password for the Apple ID used by the workflow. Apple's guides cover [Developer ID certificates](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/) and the [notarization workflow](https://developer.apple.com/documentation/Security/customizing-the-notarization-workflow).
 
-Create a GitHub Actions environment named `release`, then add these values as environment secrets rather than repository secrets:
+After Xcode finishes installing, confirm the required tools and the signing identity:
+
+```sh
+xcodebuild -version
+xcrun notarytool --help
+security find-identity -v -p codesigning
+```
+
+Upload these values as `release` environment secrets, not repository secrets:
 
 | Secret | Value |
 |---|---|
@@ -17,13 +39,17 @@ Create a GitHub Actions environment named `release`, then add these values as en
 | `APPLE_TEAM_ID` | Ten-character Apple Developer team ID |
 | `APPLE_APP_PASSWORD` | App-specific password |
 
-Configure the `release` environment with a required reviewer and restrict deployments to tags matching `v*`. Before granting anyone else write access, create a repository ruleset that protects matching tags from unauthorized creation, update, or deletion. These GitHub settings are manual; the workflow cannot create or verify them. Together, the environment and tag rules stop an unapproved tag workflow from reading the signing credentials.
-
-Encode the certificate on macOS with:
+Run the helper on the Mac whose Keychain contains the identity. The password prompts do not echo, enter shell history, or write to disk:
 
 ```sh
-base64 -i DeveloperIDApplication.p12 | pbcopy
+./scripts/configure_macos_signing.sh \
+  --p12 /path/to/DeveloperIDApplication.p12 \
+  --identity "Developer ID Application: Your Name (TEAMID)" \
+  --apple-id you@example.com \
+  --team-id TEAMID
 ```
+
+The helper verifies the local identity and GitHub environment, then sends each secret directly to GitHub through standard input. Do not paste a certificate or password into an issue, pull request, command-line argument, or chat.
 
 The release job first builds one Intel and one Apple-silicon binary without secrets and combines them with `lipo`. It then checks the secrets, imports the certificate into an ephemeral keychain, signs with the hardened runtime, notarizes and staples the app, and produces a separately signed, notarized, and stapled DMG. A missing secret fails before signing and notarization.
 
@@ -38,6 +64,12 @@ make audit
 go test -race ./...
 go vet ./...
 git status --short
+```
+
+On macOS, also build and inspect the unsigned universal app:
+
+```sh
+make macos-preflight
 ```
 
 Review `CHANGELOG.md`, confirm that the package version and plugin manifests agree, and replace both screenshot placeholders in `docs/images/`.

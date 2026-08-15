@@ -28,3 +28,21 @@ jobs:
       - run: npm install --global @anthropic-ai/claude-code@2.1.228 @openai/codex@0.147.0
       - run: MINDMAP_REQUIRE_HOST_VALIDATORS=1 make validate
       - run: make audit
+
+  macos-desktop:
+    name: macOS desktop build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.25.13"
+          cache-dependency-path: |
+            go.sum
+            desktop/go.sum
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - run: ./scripts/test_macos_app.sh

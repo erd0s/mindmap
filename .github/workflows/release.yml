@@ -87,7 +87,7 @@ jobs:
   macos-desktop:
     name: signed macOS desktop
     needs: [version, validate]
-    runs-on: macos-14
+    runs-on: macos-15
     environment: release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -103,7 +103,7 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/frontend/package-lock.json
       - name: Build unsigned universal app
-        run: ./scripts/build_macos_app.sh
+        run: ./scripts/test_macos_app.sh
       - name: Require Apple signing secrets
         env:
           CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
@@ -122,14 +122,14 @@ jobs:
           CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
         run: |
           keychain="$RUNNER_TEMP/mindmap-signing.keychain-db"
-          certificate="$RUNNER_TEMP/developer-id.p12"
+          certificate_path="$RUNNER_TEMP/developer-id.p12"
           prior_keychains="$RUNNER_TEMP/mindmap-user-keychains.txt"
           security list-keychains -d user > "$prior_keychains"
-          printf '%s' "$CERTIFICATE" | base64 -D > "$certificate"
+          printf '%s' "$CERTIFICATE" | base64 -D > "$certificate_path"
           security create-keychain -p actions "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p actions "$keychain"
-          security import "$certificate" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security import "$certificate_path" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
           existing_keychains=()
           while read -r existing_keychain; do
             existing_keychain=${existing_keychain#\"}
@@ -169,7 +169,7 @@ jobs:
         if: always()
         run: |
           keychain="$RUNNER_TEMP/mindmap-signing.keychain-db"
-          certificate="$RUNNER_TEMP/developer-id.p12"
+          certificate_path="$RUNNER_TEMP/developer-id.p12"
           prior_keychains="$RUNNER_TEMP/mindmap-user-keychains.txt"
           if [ -f "$prior_keychains" ]; then
             existing_keychains=()
@@ -183,7 +183,7 @@ jobs:
             fi
           fi
           security delete-keychain "$keychain" 2>/dev/null || true
-          rm -f "$certificate" "$prior_keychains"
+          rm -f "$certificate_path" "$prior_keychains"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-desktop

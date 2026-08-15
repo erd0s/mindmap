@@ -1,4 +1,4 @@
-.PHONY: test package validate audit clean mindmap mindmap-dist desktop-test test-frontier-handoff
+.PHONY: test package validate audit clean mindmap mindmap-dist desktop-test macos-preflight test-frontier-handoff
 
 VERSION := $(shell sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)
 GOVULNCHECK_VERSION := v1.7.0
@@ -21,6 +21,9 @@ mindmap-dist:
 desktop-test:
 	cd desktop/frontend && npm ci && npm audit --audit-level=high && npm test && npm run build
 	cd desktop && CGO_ENABLED=0 go test -tags server ./...
+
+macos-preflight:
+	./scripts/test_macos_app.sh
 
 test-frontier-handoff: package
 	PYTHONPATH=src python3 scripts/test_frontier_handoff.py
