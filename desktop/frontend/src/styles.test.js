@@ -12,6 +12,10 @@ describe('desktop interaction styles', () => {
     expect(styles).toMatch(/\.project-list\s*\{[^}]*--wails-draggable:\s*no-drag;/s)
   })
 
+  it('keeps graph chrome clear of the macOS traffic-light controls', () => {
+    expect(styles).toMatch(/\.topbar\s*\{[^}]*padding:\s*6px 14px 0 96px;/s)
+  })
+
   it('shows keyboard focus on graph nodes', () => {
     expect(styles).toMatch(/\.react-flow__node:focus-visible \.thought-node\s*\{/)
     expect(styles).toMatch(/\.react-flow__node:focus\s*\{\s*outline:\s*none;/)

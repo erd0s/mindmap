@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isOpenShortcut, selectionFromNodeChanges, snapshotRevision, subtreeConfirmation } from './graphState.js'
+import { isOpenShortcut, isPickerCloseShortcut, selectionFromNodeChanges, snapshotRevision, subtreeConfirmation } from './graphState.js'
 
 describe('isOpenShortcut', () => {
   it('accepts command O and command N without modifier aliases', () => {
@@ -8,6 +8,15 @@ describe('isOpenShortcut', () => {
     expect(isOpenShortcut({ key: 'o', metaKey: true, repeat: true })).toBe(false)
     expect(isOpenShortcut({ key: 'o', metaKey: true, altKey: true })).toBe(false)
     expect(isOpenShortcut({ key: 'o', ctrlKey: true })).toBe(false)
+  })
+})
+
+describe('isPickerCloseShortcut', () => {
+  it('accepts an unmodified, non-repeating Escape key', () => {
+    expect(isPickerCloseShortcut({ key: 'Escape' })).toBe(true)
+    expect(isPickerCloseShortcut({ key: 'Escape', repeat: true })).toBe(false)
+    expect(isPickerCloseShortcut({ key: 'Escape', metaKey: true })).toBe(false)
+    expect(isPickerCloseShortcut({ key: 'o' })).toBe(false)
   })
 })
 

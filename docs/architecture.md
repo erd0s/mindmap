@@ -60,7 +60,7 @@ Transcript parsing is an adapter rather than a storage contract. Unknown JSONL r
 
 Each viewer reads a project and its items in one SQLite read transaction. A persistent connection polls `PRAGMA data_version`: every 200 ms in the terminal and every 250 ms in the desktop process. An external commit triggers a fresh snapshot while preserving the selected concept when possible.
 
-The desktop process owns one watcher and emits a lightweight change event to all open windows. The coding-session picker and each graph live in separate native windows. From a graph, <kbd>⌘</kbd><kbd>O</kbd> or <kbd>⌘</kbd><kbd>N</kbd> opens another picker; the shortcuts do nothing inside a picker so they cannot multiply open dialogs.
+The desktop process owns one watcher and emits a lightweight change event to all open windows. The coding-session picker and each graph live in separate native windows. From a graph, <kbd>⌘</kbd><kbd>O</kbd> or <kbd>⌘</kbd><kbd>N</kbd> opens another picker; the shortcuts do nothing inside a picker so they cannot multiply open dialogs. <kbd>Esc</kbd> closes only the active picker.
 
 Subtree deletion is a deliberate user edit. Each viewer sends the exact identifier/revision set shown by its confirmation dialog. One recursive transaction rejects a changed branch, records each deleted identifier and title, removes the selected item and all descendants, and updates the project timestamp. Messages and prior events remain intact. Lifecycle context replays these events as durable tombstones, so older transcript evidence cannot recreate a deleted branch. Only an explicit `restore: true` upsert clears a tombstone; legacy later `item.created` events remain compatible.
 

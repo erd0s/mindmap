@@ -23,6 +23,17 @@ export function isOpenShortcut(event) {
   )
 }
 
+export function isPickerCloseShortcut(event) {
+  return Boolean(
+    event.key === 'Escape' &&
+    !event.metaKey &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.repeat,
+  )
+}
+
 export function subtreeConfirmation(items, itemID) {
   const byParent = new Map()
   const byID = new Map(items.map((item) => [item.id, item]))

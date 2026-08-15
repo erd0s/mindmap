@@ -20,7 +20,7 @@ body { margin: 0; overflow: hidden; background: var(--bg); color: var(--text); f
 button { font: inherit; }
 code, kbd { font-family: var(--mono); }
 .app { display: flex; flex-direction: column; height: 100%; }
-.topbar { --wails-draggable: drag; height: 50px; display: flex; align-items: center; gap: 10px; padding: 6px 14px 0 82px; border-bottom: 1px solid var(--border); background: rgba(9, 9, 11, .94); -webkit-app-region: drag; }
+.topbar { --wails-draggable: drag; height: 50px; display: flex; align-items: center; gap: 10px; padding: 6px 14px 0 96px; border-bottom: 1px solid var(--border); background: rgba(9, 9, 11, .94); -webkit-app-region: drag; }
 .topbar button { --wails-draggable: no-drag; -webkit-app-region: no-drag; }
 .brand { font: 600 13px var(--mono); }
 .project-name { color: var(--muted); }
@@ -107,7 +107,6 @@ kbd { display: inline-block; min-width: 18px; margin-left: 3px; padding: 0 4px; 
 
 @media (max-width: 720px) {
   .counts, .project-counts, .topbar .divider, .topbar .button.active + .button { display: none; }
-  .topbar { padding-left: 74px; }
   .detail { top: auto; right: 8px; bottom: 8px; left: 8px; width: auto; max-height: 48%; }
   .legend { flex-wrap: wrap; gap: 7px; }
 }

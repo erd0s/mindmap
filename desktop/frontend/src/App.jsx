@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Window as CurrentWindow } from '@wailsio/runtime'
 import { Background, Panel, ReactFlow, useReactFlow } from '@xyflow/react'
 import ThoughtNode from './ThoughtNode.jsx'
 import { backend } from './backend.js'
-import { isOpenShortcut, selectionFromNodeChanges, snapshotRevision, subtreeConfirmation } from './graphState.js'
+import { isOpenShortcut, isPickerCloseShortcut, selectionFromNodeChanges, snapshotRevision, subtreeConfirmation } from './graphState.js'
 import { layoutGraph } from './layout.js'
 
 const nodeTypes = { thought: ThoughtNode }
@@ -45,11 +46,15 @@ function Picker() {
   }, [reload])
 
   useEffect(() => {
-    const blockOpenShortcut = (event) => {
+    const handlePickerShortcut = (event) => {
       if (isOpenShortcut(event)) event.preventDefault()
+      if (isPickerCloseShortcut(event)) {
+        event.preventDefault()
+        void CurrentWindow.Close().catch(setError)
+      }
     }
-    window.addEventListener('keydown', blockOpenShortcut)
-    return () => window.removeEventListener('keydown', blockOpenShortcut)
+    window.addEventListener('keydown', handlePickerShortcut)
+    return () => window.removeEventListener('keydown', handlePickerShortcut)
   }, [])
 
   const choose = (project) => {
