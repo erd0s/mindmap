@@ -20,7 +20,9 @@ plutil -lint "$plist"
 [ "$(plutil -extract CFBundleShortVersionString raw -o - "$plist")" = "$version" ]
 [ "$(plutil -extract CFBundleVersion raw -o - "$plist")" = "$version" ]
 [ "$(plutil -extract LSMinimumSystemVersion raw -o - "$plist")" = 12.0 ]
-lipo -verify_arch x86_64 arm64 "$binary"
+lipo "$binary" -verify_arch x86_64 arm64
+xcrun vtool -show-build "$binary" |
+  awk '$1 == "minos" && $2 == "12.0" { count++ } END { exit count == 2 ? 0 : 1 }'
 [ "$("$binary" --version)" = "$version" ]
 [ -s "$app/Contents/Resources/Mindmap.icns" ]
 cmp "$repo_root/LICENSE" "$app/Contents/Resources/LICENSE.txt"

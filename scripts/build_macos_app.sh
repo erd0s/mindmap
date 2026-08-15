@@ -28,18 +28,15 @@ rm -rf "$iconset"
 
 (cd "$repo_root/desktop/frontend" && npm ci && npm run build)
 for arch in amd64 arm64; do
-  clang_arch=$arch
-  if [ "$arch" = "amd64" ]; then
-    clang_arch=x86_64
-  fi
   (cd "$repo_root/desktop" && \
     CGO_ENABLED=1 GOOS=darwin GOARCH="$arch" MACOSX_DEPLOYMENT_TARGET=12.0 \
-    CGO_CFLAGS="-arch $clang_arch" CGO_LDFLAGS="-arch $clang_arch" \
+    CGO_CFLAGS="-mmacosx-version-min=12.0" \
+    CGO_LDFLAGS="-mmacosx-version-min=12.0" \
     go build -tags production -trimpath \
       -ldflags "-s -w -X main.version=$version" -o "$output_dir/Mindmap-$arch" .)
 done
 lipo -create "$output_dir/Mindmap-amd64" "$output_dir/Mindmap-arm64" -output "$binary_dir/Mindmap"
-lipo -verify_arch x86_64 arm64 "$binary_dir/Mindmap"
+lipo "$binary_dir/Mindmap" -verify_arch x86_64 arm64
 rm "$output_dir/Mindmap-amd64" "$output_dir/Mindmap-arm64"
 chmod 0755 "$binary_dir/Mindmap"
 printf 'Built %s\n' "$app"
