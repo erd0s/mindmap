@@ -1,6 +1,6 @@
 # Mindmap
 
-Mindmap keeps a small causal map of the work in each coding project. It turns long Codex and Claude Code sessions into goals, decisions, open questions, and explicit next steps—without becoming another task manager.
+Mindmap keeps a small causal map of the work in each coding project. It turns long Codex and Claude Code sessions into goals, decisions, open questions, and explicit next steps without becoming another task manager.
 
 Mindmap stores its own data on your machine and opens no network listener or remote service of its own. Your coding agent still interprets prompts and transcripts under its own privacy and usage terms.
 
@@ -10,9 +10,9 @@ Mindmap stores its own data on your machine and opens no network listener or rem
 
 Each node is a meaningful concept, not a message or activity-log entry:
 
-- `planned` — explicitly intended, but not started
-- `open` — active work, an unresolved question, or a thread worth resuming
-- `settled` — completed work or a resolved decision
+- `planned` - explicitly intended, but not started
+- `open` - active work, an unresolved question, or a thread worth resuming
+- `settled` - completed work or a resolved decision
 
 Parent links mean “grew out of.” Open and planned leaves form the frontier; settled branches show what the project has covered.
 
