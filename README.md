@@ -4,6 +4,22 @@ Mindmap keeps a small causal map of the work in each coding project. It turns lo
 
 Mindmap stores its own data on your machine and opens no network listener or remote service of its own. Your coding agent still interprets prompts and transcripts under its own privacy and usage terms.
 
+![Desktop screenshot placeholder: Codex or Claude Desktop beside Mindmap Desktop](docs/images/desktop-placeholder.svg)
+
+<!-- Replace docs/images/desktop-placeholder.svg with a real side-by-side desktop screenshot before launch. -->
+
+![Terminal screenshot placeholder: Codex or Claude CLI beside the Mindmap terminal viewer](docs/images/terminal-placeholder.svg)
+
+<!-- Replace docs/images/terminal-placeholder.svg with a real side-by-side terminal screenshot before launch. -->
+
+Each node is a meaningful concept, not a message or activity-log entry:
+
+- `planned` — explicitly intended, but not started
+- `open` — active work, an unresolved question, or a thread worth resuming
+- `settled` — completed work or a resolved decision
+
+Parent links mean “grew out of.” Open and planned leaves form the frontier; settled branches show what the project has covered.
+
 ## Install
 
 ### macOS desktop
@@ -16,18 +32,6 @@ The desktop app views and edits maps; the agent plugin records them. To install 
 curl -fsSL https://raw.githubusercontent.com/erd0s/mindmap/main/install.sh | sh
 ```
 
-If you prefer to inspect an installer before running it:
-
-```sh
-curl -fsSLO https://raw.githubusercontent.com/erd0s/mindmap/main/install.sh
-less install.sh
-sh install.sh
-```
-
-The installer verifies the release binary against the published SHA-256 checksums, places it in `~/.local/bin`, and sets up each supported agent command visible on your shell `PATH`.
-
-Checksums detect download corruption; GitHub also publishes repository-bound build-provenance attestations for release artifacts. See [the release guide](docs/releasing.md) for independent verification.
-
 ### Terminal viewer
 
 The same installer supports macOS and Linux:
@@ -36,7 +40,7 @@ The same installer supports macOS and Linux:
 curl -fsSL https://raw.githubusercontent.com/erd0s/mindmap/main/install.sh | sh
 ```
 
-Windows currently receives the terminal viewer only:
+Windows currently supports the terminal viewer only:
 
 ```powershell
 irm https://raw.githubusercontent.com/erd0s/mindmap/main/install.ps1 | iex
@@ -64,22 +68,6 @@ Run `mindmap` in the project for the terminal view, or open Mindmap on macOS and
 Mindmap remains active for the whole project directory until you stop it. New local Codex or Claude sessions beneath that directory receive the current map automatically.
 
 ## See the work, not the transcript
-
-![Desktop screenshot placeholder: Codex or Claude Desktop beside Mindmap Desktop](docs/images/desktop-placeholder.svg)
-
-<!-- Replace docs/images/desktop-placeholder.svg with a real side-by-side desktop screenshot before launch. -->
-
-![Terminal screenshot placeholder: Codex or Claude CLI beside the Mindmap terminal viewer](docs/images/terminal-placeholder.svg)
-
-<!-- Replace docs/images/terminal-placeholder.svg with a real side-by-side terminal screenshot before launch. -->
-
-Each node is a meaningful concept, not a message or activity-log entry:
-
-- `planned` — explicitly intended, but not started
-- `open` — active work, an unresolved question, or a thread worth resuming
-- `settled` — completed work or a resolved decision
-
-Parent links mean “grew out of.” Open and planned leaves form the frontier; settled branches show what the project has covered.
 
 ## Install an agent later
 
