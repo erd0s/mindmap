@@ -2,7 +2,7 @@
 
 Mindmap keeps a small causal map of the work in each coding project. It turns long Codex and Claude Code sessions into goals, decisions, open questions, and explicit next steps without becoming another task manager.
 
-Mindmap stores its own data on your machine and opens no network listener or remote service of its own. Your coding agent still interprets prompts and transcripts under its own privacy and usage terms.
+Mindmap stores its own data on your machine and opens no network listener or remote service of its own.
 
 ### Desktop
 
@@ -18,13 +18,11 @@ Each node is a meaningful concept, not a message or activity-log entry:
 - `open` - active work, an unresolved question, or a thread worth resuming
 - `settled` - completed work or a resolved decision
 
-Parent links mean “grew out of.” Open and planned leaves form the frontier; settled branches show what the project has covered.
-
 ## Install
 
 ### macOS desktop
 
-Download `mindmap_macos_universal.dmg` from the [latest release](https://github.com/erd0s/mindmap/releases/latest), open it, and drag **Mindmap** to Applications. The app is a signed, notarized universal build for macOS 12 or later.
+Download `mindmap_macos_universal.dmg` from the [latest release](https://github.com/erd0s/mindmap/releases/latest), open it, and drag **Mindmap** to Applications.
 
 The desktop app views and edits maps; the agent plugin records them. To install the plugin and terminal viewer too, run:
 
@@ -46,9 +44,9 @@ Windows currently supports the terminal viewer only:
 irm https://raw.githubusercontent.com/erd0s/mindmap/main/install.ps1 | iex
 ```
 
-FreeBSD, OpenBSD, and additional architectures can download a matching `mindmap_<os>_<arch>` asset from [GitHub Releases](https://github.com/erd0s/mindmap/releases).
+Additional architectures available at [GitHub Releases](https://github.com/erd0s/mindmap/releases).
 
-The Codex and Claude integrations require Python 3.10 or later. During setup, Mindmap saves the absolute interpreter path for its bundled Python launchers, so a Finder-launched agent does not have to inherit the setup shell's `PATH`. The terminal viewer and desktop app do not require Python.
+The Codex and Claude integrations require Python 3.10 or later.
 
 ## Start a map
 
@@ -63,7 +61,7 @@ Open a local coding-agent session inside a project, then invoke Mindmap:
 
 Codex also accepts `$mindmap start`, `$mindmap sync`, `$mindmap status`, and `$mindmap stop`.
 
-Run `mindmap` in the project for the terminal view, or open Mindmap on macOS and choose a coding session from its custom picker. Use <kbd>⌘</kbd><kbd>O</kbd> or <kbd>⌘</kbd><kbd>N</kbd> to open another session; press <kbd>Esc</kbd> to close the picker. Every selection opens in its own window. Both views update after the agent commits a graph change.
+Run `mindmap` in the project for the terminal view, or open Mindmap on macOS and choose a coding session from its custom picker.
 
 Mindmap remains active for the whole project directory until you stop it. New local Codex or Claude sessions beneath that directory receive the current map automatically.
 
