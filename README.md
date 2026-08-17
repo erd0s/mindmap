@@ -4,7 +4,11 @@ Mindmap keeps a small causal map of the work in each coding project. It turns lo
 
 Mindmap stores its own data on your machine and opens no network listener or remote service of its own. Your coding agent still interprets prompts and transcripts under its own privacy and usage terms.
 
+### Desktop
+
 ![Desktop screenshot](docs/images/desktop.png)
+
+### TUI
 
 ![Terminal screenshot](docs/images/shell.png)
 
