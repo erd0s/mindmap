@@ -4,13 +4,9 @@ Mindmap keeps a small causal map of the work in each coding project. It turns lo
 
 Mindmap stores its own data on your machine and opens no network listener or remote service of its own. Your coding agent still interprets prompts and transcripts under its own privacy and usage terms.
 
-![Desktop screenshot placeholder: Codex or Claude Desktop beside Mindmap Desktop](docs/images/desktop-placeholder.svg)
+![Desktop screenshot](docs/images/desktop.png)
 
-<!-- Replace docs/images/desktop-placeholder.svg with a real side-by-side desktop screenshot before launch. -->
-
-![Terminal screenshot placeholder: Codex or Claude CLI beside the Mindmap terminal viewer](docs/images/terminal-placeholder.svg)
-
-<!-- Replace docs/images/terminal-placeholder.svg with a real side-by-side terminal screenshot before launch. -->
+![Terminal screenshot](docs/images/shell.png)
 
 Each node is a meaningful concept, not a message or activity-log entry:
 
@@ -66,8 +62,6 @@ Codex also accepts `$mindmap start`, `$mindmap sync`, `$mindmap status`, and `$m
 Run `mindmap` in the project for the terminal view, or open Mindmap on macOS and choose a coding session from its custom picker. Use <kbd>⌘</kbd><kbd>O</kbd> or <kbd>⌘</kbd><kbd>N</kbd> to open another session; press <kbd>Esc</kbd> to close the picker. Every selection opens in its own window. Both views update after the agent commits a graph change.
 
 Mindmap remains active for the whole project directory until you stop it. New local Codex or Claude sessions beneath that directory receive the current map automatically.
-
-## See the work, not the transcript
 
 ## Install an agent later
 
