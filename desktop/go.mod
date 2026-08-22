@@ -7,7 +7,7 @@ toolchain go1.25.13
 require (
 	github.com/erd0s/mindmap v0.0.0
 	github.com/wailsapp/wails/v3 v3.0.0-beta.8
-	modernc.org/sqlite v1.56.0
+	modernc.org/sqlite v1.57.0
 )
 
 require (
