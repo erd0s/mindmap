@@ -284,6 +284,19 @@ verified fix. This directly measures transition timing instead of inferring it
 from one final graph. Old one-step reports are retained as calibration evidence
 but are not comparable to the new fixture digests.
 
+The first retained temporal workforce sample then passed 10/10 after one
+documented equivalence correction: Codex created the still-open comparison and
+planned handoff during the side-quest interaction in one trial, then settled
+them in the completion interaction. That is valid earlier creation, so the
+fixture now accepts either that path or creation at completion while still
+requiring the side quest in step one and the same final material branches and
+states. Codex and Claude each passed 5/5; every scored metric had mean and
+minimum 1.0. This supports the original diagnosis that lost/early checkpoints
+and a one-turn compression surrogate—not the shared state model—caused the
+durable workforce omission. It does not yet validate same-interaction steering,
+which remains covered by the deterministic lifecycle regression rather than
+these fresh-session semantic steps.
+
 General semantic detection of fast post-checkpoint omissions remains a programme-level gap; the one-minute safeguard still needs production false-positive measurement. The remaining semantic cases need repeated runs, the Claude permission case still needs an integration fixture, and v0.3.0-versus-candidate reports plus human cold-read scoring are required before release.
 
 ## Commands

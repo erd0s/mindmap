@@ -32,10 +32,26 @@
             "selector": {"all_terms": ["saas", "access"]},
             "state": "settled",
             "parent_key": "root"
+          },
+          {
+            "key": "comparison",
+            "selector": {"id": "engineering-comparison"},
+            "required": false,
+            "state": "open",
+            "parent_key": "root",
+            "resume": "nonempty"
+          },
+          {
+            "key": "handoff",
+            "selector": {"all_terms": ["avery", "handoff"]},
+            "required": false,
+            "state": "planned",
+            "parent_key": "root",
+            "resume": "nonempty"
           }
         ],
         "min_new_nodes": 1,
-        "max_new_nodes": 1,
+        "max_new_nodes": 3,
         "forbidden_title_patterns": ["^(message|turn|prompt|tool)[-_ ]?\\d+"]
       },
       "reference_items": [
@@ -80,6 +96,13 @@
             "parent_keys": ["root", "handoff"]
           },
           {
+            "key": "comparison",
+            "selector": {"id": "engineering-comparison"},
+            "required": false,
+            "state": "settled",
+            "parent_key": "root"
+          },
+          {
             "key": "handoff",
             "selector": {"all_terms": ["avery", "handoff"]},
             "state": "settled",
@@ -93,7 +116,7 @@
             "resume": "nonempty"
           }
         ],
-        "min_new_nodes": 2,
+        "min_new_nodes": 1,
         "max_new_nodes": 2,
         "forbidden_title_patterns": ["^(message|turn|prompt|tool)[-_ ]?\\d+"]
       },
