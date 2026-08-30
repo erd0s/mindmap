@@ -250,7 +250,7 @@ func setupIntegration(host, source string, dryRun, refresh bool) error {
 		fmt.Printf("%s: Mindmap is already installed.\n", host)
 		return nil
 	}
-	commands, err := integrationSetupCommands(host, source, status)
+	commands, err := integrationSetupCommands(host, source, status, refresh)
 	if err != nil {
 		return err
 	}
@@ -278,7 +278,7 @@ func setupIntegration(host, source string, dryRun, refresh bool) error {
 	return nil
 }
 
-func integrationSetupCommands(host, source string, status integrationStatus) ([][]string, error) {
+func integrationSetupCommands(host, source string, status integrationStatus, refresh bool) ([][]string, error) {
 	var commands [][]string
 	if status.Legacy && host == "codex" {
 		if !status.LegacyMarketplaceOwned {
@@ -295,10 +295,20 @@ func integrationSetupCommands(host, source string, status integrationStatus) ([]
 				[]string{"plugin", "add", "mindmap@" + marketplaceName},
 			)
 		} else {
-			commands = append(commands,
-				[]string{"plugin", "marketplace", "update", marketplaceName},
-				[]string{"plugin", "update", "mindmap@" + marketplaceName, "--scope", "user", "--yes"},
-			)
+			commands = append(commands, []string{"plugin", "marketplace", "update", marketplaceName})
+			if refresh {
+				// Claude's update command is a no-op when the manifest version is
+				// unchanged, even if the marketplace package contents changed. A
+				// forced refresh must therefore reinstall while preserving plugin data.
+				commands = append(commands,
+					[]string{"plugin", "uninstall", "mindmap@" + marketplaceName, "--scope", "user", "--keep-data", "--yes"},
+					[]string{"plugin", "install", "mindmap@" + marketplaceName, "--scope", "user", "--yes"},
+				)
+			} else {
+				commands = append(commands,
+					[]string{"plugin", "update", "mindmap@" + marketplaceName, "--scope", "user", "--yes"},
+				)
+			}
 		}
 	} else {
 		commands = append(commands, []string{"plugin", "marketplace", "add", source})

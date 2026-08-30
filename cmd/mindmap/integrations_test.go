@@ -137,7 +137,7 @@ func TestLegacyMarketplaceRemovalRequiresMindmapSource(t *testing.T) {
 }
 
 func TestLegacyMigrationRefusesUnverifiedPersonalMarketplace(t *testing.T) {
-	_, err := integrationSetupCommands("codex", marketplaceSource, integrationStatus{Legacy: true})
+	_, err := integrationSetupCommands("codex", marketplaceSource, integrationStatus{Legacy: true}, false)
 	if err == nil || !strings.Contains(err.Error(), "refusing to remove mindmap@personal") {
 		t.Fatalf("error = %v", err)
 	}
@@ -147,7 +147,7 @@ func TestLegacyMigrationRemovesOnlyVerifiedPersonalMarketplace(t *testing.T) {
 	commands, err := integrationSetupCommands("codex", marketplaceSource, integrationStatus{
 		Legacy:                 true,
 		LegacyMarketplaceOwned: true,
-	})
+	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,6 +156,40 @@ func TestLegacyMigrationRemovesOnlyVerifiedPersonalMarketplace(t *testing.T) {
 		{"plugin", "marketplace", "remove", "personal"},
 		{"plugin", "marketplace", "add", marketplaceSource},
 		{"plugin", "add", "mindmap@" + marketplaceName},
+	}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands = %#v, want %#v", commands, want)
+	}
+}
+
+func TestClaudeRefreshReinstallsSameVersionAndPreservesPluginData(t *testing.T) {
+	commands, err := integrationSetupCommands("claude", marketplaceSource, integrationStatus{
+		Installed: true,
+		Current:   true,
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{
+		{"plugin", "marketplace", "update", marketplaceName},
+		{"plugin", "uninstall", "mindmap@" + marketplaceName, "--scope", "user", "--keep-data", "--yes"},
+		{"plugin", "install", "mindmap@" + marketplaceName, "--scope", "user", "--yes"},
+	}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands = %#v, want %#v", commands, want)
+	}
+}
+
+func TestClaudeOrdinaryUpgradeUsesUpdate(t *testing.T) {
+	commands, err := integrationSetupCommands("claude", marketplaceSource, integrationStatus{
+		Installed: true,
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{
+		{"plugin", "marketplace", "update", marketplaceName},
+		{"plugin", "update", "mindmap@" + marketplaceName, "--scope", "user", "--yes"},
 	}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("commands = %#v, want %#v", commands, want)

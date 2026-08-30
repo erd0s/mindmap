@@ -54,6 +54,13 @@ The generation check detects work after a checkpoint without waiting for elapsed
 
 Tool names differ in practice. In the Claude permission fixture, Claude used Serena's MCP shell executor when built-in `Bash` was denied. Mindmap counted that call because the hook does not assume that shell work always travels through `Bash`. The denial fixture therefore disables external MCP servers as well as built-in shell access; otherwise it tests alternate execution, not an unavailable record path.
 
+Claude's plugin updater treats an unchanged manifest version as already current,
+even when a refreshed marketplace contains different package bytes. For that
+reason, `mindmap setup --refresh claude` updates the marketplace, uninstalls the
+plugin with `--keep-data`, and reinstalls it. Ordinary detected version upgrades
+continue to use `claude plugin update`. Codex's refresh path already removes and
+re-adds the installed plugin. Neither path changes the shared Mindmap database.
+
 The installations live in different host directories, but their runtime state does not. Plugin caches are never used as the database location.
 
 ## Official references

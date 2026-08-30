@@ -122,6 +122,11 @@ mindmap doctor
 
 Expected: setup is idempotent, refresh updates existing installations, each integration is detected independently, and a new local desktop or CLI session can invoke the management skill. Repeat once from Finder-launched Codex Desktop and Claude Desktop, and confirm a lifecycle hook runs without a Python-not-found warning. If either host command is absent from the shell `PATH`, record the host-specific marketplace setup needed before rerunning `mindmap setup`. If the configured interpreter later moves, rerun setup or set `MINDMAP_PYTHON` to an absolute Python 3.10+ path in the host's local environment.
 
+Also force-refresh an unchanged development version whose package bytes differ.
+Expected: Codex removes and re-adds it; Claude preserves plugin data, uninstalls,
+and reinstalls it rather than accepting the same-version update no-op. Compare
+the installed hook and runtime files with the source package after each refresh.
+
 ## 8. Stop behavior
 
 Invoke the host's Mindmap stop action and complete its final checkpoint. Begin another session beneath the project.
