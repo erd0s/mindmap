@@ -94,11 +94,39 @@ Create versioned cases from the observed failures and good counterexamples:
 
 Each fixture stores a short synthetic transcript, labelled concepts and transitions, accepted parent alternatives, and forbidden outputs. It does not store private production transcripts.
 
+The versioned schema is JSON under `tests/fixtures/semantic/`. `seed_operations`
+constructs the map visible at the start of the evaluated interaction. `prompt` is
+the one synthetic user turn sent to the host. `expected.nodes` selects concepts
+by stable id or semantic terms and labels their required state, causal parent,
+prior state, and resume semantics. The fixture can also bound new concepts,
+require unchanged concepts, and reject chronology-shaped titles. A
+`reference_items` graph is a scorer test oracle, not text shown to the model.
+
+Resume labels deliberately distinguish three meanings:
+
+- `empty` means the text itself must be removed, as in a contradicted stale resume;
+- `nonempty` means an unresolved concept must retain a usable re-entry point;
+- `closed` accepts either no resume or explicit completion/conditional-reopen guidance, but rejects an ordinary unfinished action.
+
+The deterministic scorer reports concept recall and precision, state and
+transition accuracy, causal-parent accuracy, and resume accuracy. It also emits
+specific structural failures. Exact generated prose is never scored.
+
 ### Layer 3: live-agent repeated trials
 
 Deterministic tests cannot measure extraction quality. Run each semantic fixture through fresh isolated Codex and Claude sessions, at least five trials per host/model configuration. Report mean, minimum, and individual failures; never report only the best run. Keep a holdout set that is not used while editing prompts.
 
 The existing frontier-handoff test is the first live case. Extend the runner to support the fixture schema, both hosts, repeated trials, and structural scoring. Human review remains required for cold-read quality and accepted semantic equivalents.
+
+`scripts/run_semantic_evals.py` now provides that runner. Each trial creates a
+new project, database, session, and isolated Codex plugin home; Claude loads the
+selected plugin directory directly. Both hosts see the same seeded graph and
+prompt. The report records the package commit, dirty state, and label; harness
+commit and dirty state; host version; requested
+model, fixture digest, scorer version, checkpoint delta, structural metrics,
+problems, final answer, and resulting graph. JSON reports include mean and
+minimum metrics per host as well as every individual trial. A live run remains
+opt-in because it calls paid/non-deterministic models.
 
 ### Layer 4: version comparison
 
@@ -108,6 +136,15 @@ Run the same fixture set against:
 2. the candidate package in a second isolated directory.
 
 Compare per-case results and aggregate metrics. A candidate may not regress an existing passing safety case to repair a failure case. Store package version, host version, model, fixture revision, trial seed when available, and scorer version with every result.
+
+The runner accepts `--package-root`, so the harness, fixtures, and scorer remain
+fixed while only the installed Mindmap package changes. This is the important
+control: running an old checkout's old tests against itself would hide newly
+discovered failures. `scripts/compare_semantic_evals.py` verifies matching
+host/fixture digests and scorer versions, then reports pass-rate and mean/minimum
+metric deltas globally, per host, and per fixture. Use at least five trials per
+cell and the same explicit host models. Model nondeterminism means a one-trial
+comparison is only a wiring smoke test, not evidence of improvement.
 
 ### Layer 5: production canary and full audit
 
@@ -193,17 +230,21 @@ Status: planned.
 
 ### Phase 5: build semantic comparison and release gates
 
-Status: planned.
+Status: in progress.
 
-- Generalize the live frontier runner to the full fixture set and both hosts.
-- Add repeated-trial structural scoring and human cold-read review.
+- Generalize the live frontier runner to the full fixture set and both hosts. **Implemented for the first five semantic cases.**
+- Add repeated-trial structural scoring and human cold-read review. **Automated scoring and repeated runs are implemented; the review rubric/run remains.**
 - Compare tagged v0.3.0 with the candidate package.
 - Run a production canary, then repeat the full CASS audit.
 - Promote the reliability evaluation to a release gate after its remaining target case passes and live scoring is stable.
 
 ## Current result
 
-The deterministic suite moves from 4/8 passing baseline cases to 8/8 on the working tree. Strict schema validation, same-interaction steer recovery, growth beyond 24 concepts, and the observed long premature-checkpoint window now pass. The full local validation gate passes, including 83 Python tests, 17 frontend tests, Go tests, package parity, builds, and official Codex and Claude validators. One isolated live Codex frontier-handoff trial also passed. General semantic detection of fast post-checkpoint omissions remains a programme-level gap; the one-minute safeguard still needs production false-positive measurement and repeated live trials are required before release.
+The deterministic suite moves from 4/8 passing baseline cases to 8/8 on the working tree. Strict schema validation, same-interaction steer recovery, growth beyond 24 concepts, and the observed long premature-checkpoint window now pass. The full local validation gate passed after that slice, including 83 Python tests, 17 frontend tests, Go tests, package parity, builds, and official Codex and Claude validators. One isolated live Codex frontier-handoff trial also passed.
+
+The first semantic-runner calibration gives useful evidence rather than a blanket green result. On the local-install closure case, Codex and Claude both settled the existing node without creating another concept (2/2). On the Paperclip contradiction, both hosts correctly reopened the existing settled concept; Codex reused it compactly, while Claude also created a redundant symptom child and therefore failed the resolution/precision constraint (Codex 1/1, Claude 0/1). These are smoke trials, not stable rates. They show that the shared lifecycle can deliver the required transition on both paths, while host prompting/model behaviour can still differ in graph resolution.
+
+General semantic detection of fast post-checkpoint omissions remains a programme-level gap; the one-minute safeguard still needs production false-positive measurement. The remaining semantic cases need repeated runs, the Claude permission case still needs an integration fixture, and v0.3.0-versus-candidate reports plus human cold-read scoring are required before release.
 
 ## Commands
 
@@ -214,6 +255,36 @@ PYTHONPATH=src python3 scripts/evaluate_reliability.py --require-targets
 make test
 make validate
 make test-frontier-handoff
+make test-semantic-evals
 ```
+
+For an actual controlled before/after semantic comparison, create a detached
+v0.3.0 worktree and run the current harness twice. Keep both non-zero trial
+results: a semantic failure is valid report data, not a runner crash.
+
+```sh
+baseline_checkout=/var/tmp/mindmap-eval-v0.3.0
+git worktree add --detach "$baseline_checkout" v0.3.0
+
+set +e
+PYTHONPATH=src:. python3 scripts/run_semantic_evals.py \
+  --host both --runs 5 --package-root "$baseline_checkout" --label v0.3.0 \
+  --json > /var/tmp/mindmap-v0.3.0-results.json
+PYTHONPATH=src:. python3 scripts/run_semantic_evals.py \
+  --host both --runs 5 --package-root . --label candidate \
+  --json > /var/tmp/mindmap-candidate-results.json
+set -e
+
+PYTHONPATH=src:. python3 scripts/compare_semantic_evals.py \
+  /var/tmp/mindmap-v0.3.0-results.json \
+  /var/tmp/mindmap-candidate-results.json
+```
+
+Pin `--codex-model` and `--claude-model` explicitly for a retained comparison,
+and require clean package and harness working trees.
+Inspect every failed graph and final answer before deciding that an alternative
+is genuinely equivalent; only then amend a fixture with the rationale. Remove
+the detached worktree with `git worktree remove "$baseline_checkout"` after the
+reports are no longer needed.
 
 Do not add `--require-targets` to the release gate until every listed target is expected to pass on the maintained branch. The non-strict report is useful during phased implementation because it shows remaining red cases without hiding completed improvements.

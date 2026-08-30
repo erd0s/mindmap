@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "id": "stale-resume-reconciliation",
+  "description": "A settled child resume contradicted by later aggregate evidence must be cleared.",
+  "project_files": [],
+  "seed_operations": [
+    {
+      "op": "upsert",
+      "id": "evidence-review",
+      "title": "Complete person evidence review",
+      "summary": "All 18 person evidence pairs are reconciled and validated.",
+      "resume": "",
+      "state": "settled",
+      "kind": "goal",
+      "parent_id": null
+    },
+    {
+      "op": "upsert",
+      "id": "person-dossiers",
+      "title": "Complete person dossiers",
+      "summary": "The individual dossiers were prepared during evidence collection.",
+      "resume": "Reconcile profiles A, B, C, and D before considering the dossiers complete.",
+      "state": "settled",
+      "kind": "task",
+      "parent_id": "evidence-review"
+    }
+  ],
+  "prompt": "Reconcile the active Mindmap. The aggregate evidence-review node is authoritative: all 18 pairs, including profiles A, B, C, and D, are reconciled. Remove the contradictory unfinished resume from the already settled dossiers without changing the valid causal states.",
+  "expected": {
+    "nodes": [
+      {
+        "key": "review",
+        "selector": {"id": "evidence-review"},
+        "state": "settled",
+        "root": true,
+        "resume": "empty"
+      },
+      {
+        "key": "dossiers",
+        "selector": {"id": "person-dossiers"},
+        "state": "settled",
+        "parent_key": "review",
+        "resume": "empty",
+        "resume_forbidden_terms": ["reconcile profiles"]
+      }
+    ],
+    "max_new_nodes": 0,
+    "forbidden_title_patterns": ["^(message|turn|prompt|tool)[-_ ]?\\d+"]
+  },
+  "reference_items": [
+    {
+      "id": "evidence-review",
+      "parent_id": null,
+      "title": "Complete person evidence review",
+      "summary": "All 18 person evidence pairs are reconciled and validated.",
+      "resume": "",
+      "state": "settled",
+      "kind": "goal",
+      "revision": 1
+    },
+    {
+      "id": "person-dossiers",
+      "parent_id": "evidence-review",
+      "title": "Complete person dossiers",
+      "summary": "All individual dossiers are reconciled and complete.",
+      "resume": "",
+      "state": "settled",
+      "kind": "task",
+      "revision": 2
+    }
+  ]
+}

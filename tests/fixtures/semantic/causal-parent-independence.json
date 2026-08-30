@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "id": "causal-parent-independence",
+  "description": "A settled causal parent may retain an unresolved optional child.",
+  "project_files": [],
+  "seed_operations": [
+    {
+      "op": "upsert",
+      "id": "assessment",
+      "title": "Complete the health assessment",
+      "summary": "The assessment and its conclusions are complete.",
+      "resume": "",
+      "state": "settled",
+      "kind": "goal",
+      "parent_id": null
+    },
+    {
+      "op": "upsert",
+      "id": "optional-hardening",
+      "title": "Consider optional hardening",
+      "summary": "Additional hardening remains available but was not required to complete the assessment.",
+      "resume": "Choose whether the optional controls are worth implementing.",
+      "state": "open",
+      "kind": "question",
+      "parent_id": "assessment"
+    }
+  ],
+  "prompt": "Report the current active Mindmap status. Nothing has changed: the assessment remains complete and optional hardening remains unresolved. Do not turn the causal relationship into task dependency.",
+  "expected": {
+    "nodes": [
+      {
+        "key": "assessment",
+        "selector": {"id": "assessment"},
+        "state": "settled",
+        "root": true,
+        "resume": "empty"
+      },
+      {
+        "key": "hardening",
+        "selector": {"id": "optional-hardening"},
+        "state": "open",
+        "parent_key": "assessment",
+        "resume": "nonempty"
+      }
+    ],
+    "unchanged_ids": ["assessment", "optional-hardening"],
+    "max_new_nodes": 0,
+    "forbidden_title_patterns": ["^(message|turn|prompt|tool)[-_ ]?\\d+"]
+  },
+  "reference_items": [
+    {
+      "id": "assessment",
+      "parent_id": null,
+      "title": "Complete the health assessment",
+      "summary": "The assessment and its conclusions are complete.",
+      "resume": "",
+      "state": "settled",
+      "kind": "goal",
+      "revision": 1
+    },
+    {
+      "id": "optional-hardening",
+      "parent_id": "assessment",
+      "title": "Consider optional hardening",
+      "summary": "Additional hardening remains available but was not required to complete the assessment.",
+      "resume": "Choose whether the optional controls are worth implementing.",
+      "state": "open",
+      "kind": "question",
+      "revision": 1
+    }
+  ]
+}

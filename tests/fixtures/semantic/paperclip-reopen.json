@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "id": "paperclip-reopen",
+  "description": "New contradictory evidence must reopen a previously settled concept without duplicating it.",
+  "project_files": [],
+  "seed_operations": [
+    {
+      "op": "upsert",
+      "id": "multi-image-capture",
+      "title": "Capture multiple images from the Mac companion",
+      "summary": "Initial testing showed image capture working.",
+      "resume": "",
+      "state": "settled",
+      "kind": "task",
+      "parent_id": null
+    }
+  ],
+  "prompt": "A broader test just contradicted the earlier result: when three images are selected, only the first image is pasted. Do not fix it in this turn. Update the active Mindmap to reflect the newly unresolved work, then explain the current state.",
+  "expected": {
+    "nodes": [
+      {
+        "key": "capture",
+        "selector": {"id": "multi-image-capture"},
+        "from_state": "settled",
+        "state": "open",
+        "root": true,
+        "resume": "nonempty"
+      }
+    ],
+    "max_new_nodes": 0,
+    "forbidden_title_patterns": ["^(message|turn|prompt|tool)[-_ ]?\\d+"]
+  },
+  "reference_items": [
+    {
+      "id": "multi-image-capture",
+      "parent_id": null,
+      "title": "Capture multiple images from the Mac companion",
+      "summary": "Broader testing shows that selecting three images pastes only the first, so multi-image capture remains unresolved.",
+      "resume": "Trace the multi-selection payload and verify that all selected images reach the paste operation.",
+      "state": "open",
+      "kind": "task",
+      "revision": 2
+    }
+  ]
+}

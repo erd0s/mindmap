@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "local-installation-closure",
+  "description": "A checkpoint must settle installation after local evidence proves the work completed.",
+  "project_files": [
+    {
+      "path": "installed-version.txt",
+      "content": "mindmap 0.3.0\ncodex plugin verified\nclaude plugin verified\ncompatibility hook repaired\nidle-session refresh guidance delivered\nno remaining installation or refresh work\n"
+    }
+  ],
+  "seed_operations": [
+    {
+      "op": "upsert",
+      "id": "local-installation",
+      "title": "Refresh the local Mindmap installation",
+      "summary": "Install v0.3.0 and migrate both host integrations.",
+      "resume": "Install and verify v0.3.0, then report how to refresh idle sessions.",
+      "state": "open",
+      "kind": "task",
+      "parent_id": null
+    }
+  ],
+  "prompt": "Read installed-version.txt. It is the authoritative result of work already completed in this session, including delivery of the idle-session refresh guidance. Report the outcome and reconcile the active Mindmap so it contains no remaining installation or refresh work. Do not change the file and do not create a new branch for work the file says is complete.",
+  "expected": {
+    "nodes": [
+      {
+        "key": "installation",
+        "selector": {"id": "local-installation"},
+        "from_state": "open",
+        "state": "settled",
+        "root": true,
+        "resume": "closed",
+        "resume_forbidden_terms": ["install and verify"]
+      }
+    ],
+    "max_new_nodes": 0,
+    "forbidden_title_patterns": ["^(message|turn|prompt|tool)[-_ ]?\\d+"]
+  },
+  "reference_items": [
+    {
+      "id": "local-installation",
+      "parent_id": null,
+      "title": "Refresh the local Mindmap installation",
+      "summary": "Mindmap v0.3.0 and both host integrations are installed and verified; the compatibility hook is repaired.",
+      "resume": "",
+      "state": "settled",
+      "kind": "task",
+      "revision": 2
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "id": "workforce-main-and-sidequest",
+  "description": "A side quest must not displace the main handoff and explicit future explorer plan.",
+  "project_files": [],
+  "seed_operations": [
+    {
+      "op": "upsert",
+      "id": "engineering-review",
+      "title": "Review engineering workforce scenarios",
+      "summary": "Compare the engineering options and prepare a decision-ready handoff.",
+      "resume": "Build the comparison and prepare Avery's handoff.",
+      "state": "open",
+      "kind": "goal",
+      "parent_id": null
+    }
+  ],
+  "prompt": "Complete this planning turn conceptually; do not edit project files. The SaaS access prerequisite is now resolved. The main result is a completed comparison and a ready handoff for Avery to use with Claude Code. We also explicitly decided to build a person-scenario explorer later, but have not started it. Reconcile all of that in the active Mindmap before answering.",
+  "expected": {
+    "nodes": [
+      {
+        "key": "root",
+        "selector": {"id": "engineering-review"},
+        "state": "settled",
+        "root": true,
+        "resume": "closed"
+      },
+      {
+        "key": "saas",
+        "selector": {"all_terms": ["saas", "access"]},
+        "state": "settled",
+        "parent_keys": ["root", "handoff"],
+        "resume": "closed"
+      },
+      {
+        "key": "handoff",
+        "selector": {"all_terms": ["avery", "handoff"]},
+        "state": "settled",
+        "parent_key": "root",
+        "resume": "closed"
+      },
+      {
+        "key": "explorer",
+        "selector": {"all_terms": ["scenario", "explorer"]},
+        "state": "planned",
+        "parent_key": "root",
+        "resume": "nonempty"
+      }
+    ],
+    "min_new_nodes": 3,
+    "max_new_nodes": 3,
+    "forbidden_title_patterns": ["^(message|turn|prompt|tool)[-_ ]?\\d+"]
+  },
+  "reference_items": [
+    {
+      "id": "engineering-review",
+      "parent_id": null,
+      "title": "Review engineering workforce scenarios",
+      "summary": "The comparison is complete and its decision-ready handoff has been prepared.",
+      "resume": "",
+      "state": "settled",
+      "kind": "goal",
+      "revision": 2
+    },
+    {
+      "id": "saas-access",
+      "parent_id": "engineering-review",
+      "title": "Resolve SaaS access prerequisite",
+      "summary": "The prerequisite access needed for the comparison is resolved.",
+      "resume": "",
+      "state": "settled",
+      "kind": "task",
+      "revision": 1
+    },
+    {
+      "id": "avery-handoff",
+      "parent_id": "engineering-review",
+      "title": "Prepare Avery handoff",
+      "summary": "Avery has a ready handoff designed for continuing the work with Claude Code.",
+      "resume": "",
+      "state": "settled",
+      "kind": "task",
+      "revision": 1
+    },
+    {
+      "id": "scenario-explorer",
+      "parent_id": "engineering-review",
+      "title": "Build person scenario explorer",
+      "summary": "A future interactive explorer will compare person-level workforce scenarios.",
+      "resume": "Define the first explorer inputs and comparison views before implementation.",
+      "state": "planned",
+      "kind": "task",
+      "revision": 1
+    }
+  ]
+}
