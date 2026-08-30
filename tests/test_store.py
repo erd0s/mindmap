@@ -605,7 +605,7 @@ class StoreTests(unittest.TestCase):
             )
         self.assertEqual(self.store.project_snapshot(project["id"])["items"], [])
 
-    def test_cumulative_concept_limit_blocks_slow_chat_log_growth(self) -> None:
+    def test_cumulative_semantic_growth_is_not_capped_at_24_concepts(self) -> None:
         project = self.activate()
         self.store.register_session(project["id"], "codex", "cumulative")
         self.store.record(
@@ -623,14 +623,72 @@ class StoreTests(unittest.TestCase):
                     "parent_id": "root",
                 } for index in range(start, start + 11)]},
             )
-        with self.assertRaisesRegex(MindmapError, "at most 24 concepts"):
-            self.store.record(
-                self.project_root, "codex", "cumulative", "overflow",
-                {"summary": "Too many", "operations": [
-                    {"op": "upsert", "id": "concept-22", "title": "One more", "parent_id": "root"},
-                    {"op": "upsert", "id": "concept-23", "title": "One too many", "parent_id": "root"},
-                ]},
-            )
+        self.store.record(
+            self.project_root, "codex", "cumulative", "beyond-old-cap",
+            {"summary": "Preserved two more meaningful branches", "operations": [
+                {"op": "upsert", "id": "concept-22", "title": "One more", "parent_id": "root"},
+                {"op": "upsert", "id": "concept-23", "title": "Another concept", "parent_id": "root"},
+            ]},
+        )
+        self.assertEqual(len(self.store.project_snapshot(project["id"])["items"]), 25)
+
+    def test_record_schema_requires_operations_and_rejects_unknown_fields(self) -> None:
+        project = self.activate()
+        self.store.register_session(project["id"], "codex", "strict-schema")
+        invalid_payloads = [
+            {"summary": "Missing operations"},
+            {"summary": "Misspelled shape", "operations": [], "op": "upsert", "node_id": "lost"},
+            {"summary": "Unknown operation field", "operations": [
+                {"op": "upsert", "id": "node", "title": "Node", "titel": "Typo"},
+            ]},
+        ]
+        for index, payload in enumerate(invalid_payloads):
+            with self.subTest(payload=payload), self.assertRaises(MindmapError):
+                self.store.record(
+                    self.project_root, "codex", "strict-schema", f"invalid-{index}", payload
+                )
+        self.assertEqual(self.store.project_snapshot(project["id"])["items"], [])
+
+    def test_additional_prompt_preserves_history_and_reopens_checkpoint(self) -> None:
+        project = self.activate()
+        session = self.store.register_session(project["id"], "codex", "steered")
+        first = self.store.begin_turn(
+            project["id"], session["id"], "same-interaction", "Build the comparison site"
+        )
+        self.assertFalse(first["checkpoint_invalidated"])
+        self.store.record(
+            self.project_root, "codex", "steered", "same-interaction",
+            {"summary": "Captured the initial branch", "operations": [{
+                "op": "upsert", "id": "comparison-site", "title": "Build the comparison site",
+            }]},
+        )
+        steered = self.store.begin_turn(
+            project["id"], session["id"], "same-interaction", "Also prepare the handoff"
+        )
+        self.assertTrue(steered["checkpoint_invalidated"])
+        self.assertFalse(self.store.is_checkpointed("codex", "steered", "same-interaction"))
+        self.assertEqual(
+            [entry["prompt"] for entry in self.store.turn_prompts(
+                "codex", "steered", "same-interaction"
+            )],
+            ["Build the comparison site", "Also prepare the handoff"],
+        )
+        self.assertEqual(
+            self.store.turn("codex", "steered", "same-interaction")["prompt_excerpt"],
+            "Build the comparison site",
+        )
+        self.store.record(
+            self.project_root, "codex", "steered", "same-interaction",
+            {"summary": "Captured the added handoff", "operations": [{
+                "op": "upsert", "id": "handoff", "title": "Prepare the handoff",
+                "parent_id": "comparison-site",
+            }]},
+        )
+        self.assertTrue(self.store.is_checkpointed("codex", "steered", "same-interaction"))
+        self.assertEqual(
+            {item["id"] for item in self.store.project_snapshot(project["id"])["items"]},
+            {"comparison-site", "handoff"},
+        )
 
     def test_text_limits_reject_transcript_scale_nodes(self) -> None:
         project = self.activate()

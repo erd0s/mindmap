@@ -297,6 +297,68 @@ class LifecycleTests(unittest.TestCase):
             self.store.turn("codex", "codex-session", "turn-1")["last_assistant_message"],
         )
 
+    def test_same_interaction_steer_reopens_checkpoint_and_explains_delta(self) -> None:
+        handle_hook("codex", self.codex_prompt("$mindmap:manage start"), self.store)
+        self.store.record(
+            self.root,
+            "codex",
+            "codex-session",
+            "turn-1",
+            {"summary": "Initial branch", "operations": [{
+                "op": "upsert", "id": "initial", "title": "Initial branch",
+            }]},
+        )
+        output = handle_hook(
+            "codex",
+            self.codex_prompt("Also capture the handoff", turn="turn-1"),
+            self.store,
+        )
+        context = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("MINDMAP_CHECKPOINT_REOPENED_V1", context)
+        self.assertIn("record only the additional or corrective semantic changes", context)
+        self.assertFalse(self.store.is_checkpointed("codex", "codex-session", "turn-1"))
+        self.assertEqual(
+            [entry["prompt"] for entry in self.store.turn_prompts(
+                "codex", "codex-session", "turn-1"
+            )],
+            ["$mindmap:manage start", "Also capture the handoff"],
+        )
+
+    def test_long_post_checkpoint_window_gets_one_reconciliation_pass(self) -> None:
+        handle_hook("codex", self.codex_prompt("$mindmap:manage start"), self.store)
+        self.store.record(
+            self.root,
+            "codex",
+            "codex-session",
+            "turn-1",
+            {"summary": "Checkpointed too early", "operations": []},
+        )
+        with self.store.transaction() as connection:
+            connection.execute(
+                "UPDATE turns SET checkpointed_at = datetime('now', '-2 minutes')"
+            )
+        stop = {
+            "hook_event_name": "Stop",
+            "cwd": str(self.root),
+            "session_id": "codex-session",
+            "turn_id": "turn-1",
+            "stop_hook_active": False,
+            "last_assistant_message": "Substantive implementation finished after the checkpoint.",
+        }
+        blocked = handle_hook("codex", stop, self.store)
+        self.assertEqual(blocked["decision"], "block")
+        self.assertIn("long post-checkpoint work", blocked["reason"])
+        self.assertFalse(self.store.is_checkpointed("codex", "codex-session", "turn-1"))
+        self.store.record(
+            self.root,
+            "codex",
+            "codex-session",
+            "turn-1",
+            {"summary": "Reconciled the completed work", "operations": []},
+        )
+        stop["stop_hook_active"] = True
+        self.assertIsNone(handle_hook("codex", stop, self.store))
+
     def test_explicit_stop_deactivates_after_final_checkpoint(self) -> None:
         self.store.activate(self.root)
         handle_hook("claude", {

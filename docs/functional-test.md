@@ -39,6 +39,10 @@ Install the local marketplace/plugin, then begin a fresh Codex session inside th
 
 Expected: the first record reconstructs those concepts rather than creating one node per message. The future plan remains `planned`. Finish the session, begin another beneath the same project, and invoke `$mindmap:manage status`; the prior tree should already be present in SessionStart context.
 
+In a host that supports steering, checkpoint a turn and then add another user prompt under the same interaction. Expected: the next injected context contains `MINDMAP_CHECKPOINT_REOPENED_V1`, preserves both prompts, retains the first mutations, and requires an incremental corrective checkpoint. Also simulate a checkpoint more than 60 seconds before Stop in an isolated test database. Expected: Stop requests one reconciliation pass rather than accepting the old checkpoint.
+
+Grow the fixture beyond 24 meaningful sibling concepts across several turns. Expected: the map accepts them. A single checkpoint with 21 new concepts, a fifth independent root, a branch deeper than ten levels, and a numbered turn/message node must still fail independently.
+
 Start a separate session outside the project and invoke start. Expected: activation is blocked for that session rather than silently retargeted through a tool workdir.
 
 Run the opt-in behavioral handoff evaluation:

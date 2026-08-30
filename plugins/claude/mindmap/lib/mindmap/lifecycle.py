@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shlex
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ ACTION_PATTERN = re.compile(
     r"(start|sync|status|stop)\s*",
     re.IGNORECASE,
 )
+MAX_CHECKPOINT_TO_STOP_SECONDS = 60.0
 
 
 def explicit_action(prompt: str) -> str | None:
@@ -31,6 +33,18 @@ def interaction_id(payload: dict[str, Any]) -> str | None:
     if isinstance(value, str) and value:
         return value
     return None
+
+
+def _checkpoint_age_seconds(checkpointed_at: str | None) -> float | None:
+    if not checkpointed_at:
+        return None
+    try:
+        checkpointed = datetime.fromisoformat(checkpointed_at)
+    except ValueError:
+        return None
+    if checkpointed.tzinfo is None:
+        checkpointed = checkpointed.replace(tzinfo=timezone.utc)
+    return max(0.0, (datetime.now(timezone.utc) - checkpointed).total_seconds())
 
 
 def _runner_path() -> str:
@@ -123,6 +137,7 @@ def _active_context(
         record_command,
         'JSON shape: {"summary":"what changed or no map change","operations":[{"op":"upsert","id":"stable-id","title":"...","summary":"what this concept means","resume":"where to pick it up","state":"planned|open|settled","kind":"goal|thread|decision|task|question|note","parent_id":null,"expected_revision":2}]}. Omit expected_revision for a new id; use the exact current revision for any update, settle, or remove. Add "restore":true only when the user explicitly asks to restore an id listed under USER-DELETED BRANCHES.',
         "Create only meaningful concepts needed for a quick overview. Connect each child to the thought or goal that caused it. Capture explicit future intentions as planned, unresolved concepts as open, and covered/decided/completed/rejected concepts as settled. Do not invent unspoken plans.",
+        "Treat the record command as the final substantive tool action: do not checkpoint while implementation, commands, tests, research, or user-requested changes remain. A later same-interaction user prompt reopens the checkpoint, but ordinary work performed after an early checkpoint may otherwise be omitted.",
     ]
     if action == "start":
         lines.append("This activation happened mid-session: RUN the transcript command, read the whole normalized history, and reconstruct its compact conceptual tree before checkpointing. Running status is not a substitute for backfill.")
@@ -215,11 +230,20 @@ def handle_hook(host: str, payload: dict[str, Any], store: Store | None = None) 
                 "safely checkpoint this turn. Do not call record with a session-wide fallback id. "
                 "Continue the user's task, warn that this turn will not be mapped, and upgrade the host.",
             )
-        store.begin_turn(project["id"], session["id"], turn_id, prompt)
+        turn_status = store.begin_turn(project["id"], session["id"], turn_id, prompt)
         effective_action = "sync" if action == "start" and not activated_now else action
         context = _active_context(
             store, project, host, session_id, turn_id, effective_action
         )
+        if turn_status["checkpoint_invalidated"]:
+            context += (
+                "\nMINDMAP_CHECKPOINT_REOPENED_V1\n"
+                "This host supplied another user prompt for an interaction that was already "
+                "checkpointed. The prior map mutations remain visible, but the checkpoint was "
+                "reopened so this added work cannot be silently lost. Review the current revisions "
+                "and record only the additional or corrective semantic changes before finishing; "
+                "do not replay a stale replacement payload."
+            )
         if transcript_warning:
             context += (
                 "\nTranscript import warning: " + transcript_warning
@@ -255,6 +279,35 @@ def handle_hook(host: str, payload: dict[str, Any], store: Store | None = None) 
         if isinstance(last_message, str) and last_message.strip():
             store.add_last_assistant_message(host, session_id, turn_id, last_message)
         checkpointed = store.is_checkpointed(host, session_id, turn_id)
+        turn = store.turn(host, session_id, turn_id)
+        checkpoint_age = _checkpoint_age_seconds(
+            str(turn.get("checkpointed_at") or "") if turn else None
+        )
+        if (
+            checkpointed
+            and not bool(payload.get("stop_hook_active"))
+            and checkpoint_age is not None
+            and checkpoint_age > MAX_CHECKPOINT_TO_STOP_SECONDS
+            and store.invalidate_checkpoint(
+                host,
+                session_id,
+                turn_id,
+                "long_post_checkpoint_window",
+                {"elapsed_seconds": round(checkpoint_age, 3)},
+            )
+        ):
+            context = _active_context(store, project, host, session_id, turn_id, None)
+            return {
+                "decision": "block",
+                "reason": (
+                    "Mindmap's checkpoint predates Stop by "
+                    f"{checkpoint_age:.1f} seconds. The production audit found that long "
+                    "post-checkpoint work can leave plans or completed state unrecorded. "
+                    "Review the current map and final response, record only additional or "
+                    "corrective changes (or a deliberate empty delta), then finish again.\n"
+                    + context
+                ),
+            }
         if not checkpointed and not bool(payload.get("stop_hook_active")):
             context = _active_context(store, project, host, session_id, turn_id, None)
             return {

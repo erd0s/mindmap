@@ -1,4 +1,4 @@
-.PHONY: test package validate audit clean mindmap mindmap-dist desktop-test macos-preflight test-frontier-handoff
+.PHONY: test package validate audit clean mindmap mindmap-dist desktop-test macos-preflight test-frontier-handoff eval-reliability
 
 VERSION := $(shell sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)
 GOVULNCHECK_VERSION := v1.7.0
@@ -27,6 +27,9 @@ macos-preflight:
 
 test-frontier-handoff: package
 	PYTHONPATH=src python3 scripts/test_frontier_handoff.py
+
+eval-reliability:
+	PYTHONPATH=src python3 scripts/evaluate_reliability.py
 
 package:
 	python3 scripts/build_plugins.py

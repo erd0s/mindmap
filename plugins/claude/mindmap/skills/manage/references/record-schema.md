@@ -1,6 +1,6 @@
 # Record schema
 
-`mindmap record` accepts a JSON object with a required non-empty `summary` and an `operations` array.
+`mindmap record` accepts a JSON object with a required non-empty `summary` and a required `operations` array. The only other allowed top-level field is `concept_model`; unknown or misspelled fields are rejected rather than treated as a no-change checkpoint.
 
 When runtime context reports a legacy-map reconciliation, the payload must also include `"concept_model":"causal-tree-v2"` after the old map has been compressed. That marker upgrades the project only if the resulting graph passes every causal-tree bound.
 
@@ -24,6 +24,6 @@ The whole payload is applied in one immediate SQLite transaction. Parent relatio
 
 The payload is a compressed conceptual tree, not a transcript. Do not create one item per message, turn, tool call, file, or chronological event.
 
-One checkpoint may add at most 20 concepts. The durable graph is capped at 24 concepts, 4 roots, and 10 levels of depth; hitting a bound means the map needs semantic merging rather than more chronology. Numbered message/turn/prompt/response/tool-call/event ids and titles are rejected. A no-change checkpoint is still permitted while a legacy map is over those bounds, but the next mutation must reduce it into bounds.
+One checkpoint may add at most 20 concepts. The durable graph has no lifetime node-count ceiling: a complex project may retain as many distinct concepts as its history requires. It remains limited to 4 roots and 10 levels of depth, and numbered message/turn/prompt/response/tool-call/event ids and titles are rejected. These structural rules preserve causal resolution without forcing unrelated ideas together.
 
 Titles are limited to 160 characters, concept summaries to 1,200, resume points to 600, and checkpoint summaries to 500. These are ceilings, not targets: write the shortest cold-readable text that preserves the idea.

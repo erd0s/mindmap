@@ -35,12 +35,13 @@ SQLite owns the canonical state:
 
 - `projects` stores root identity, display route, and activation.
 - `sessions` tracks host identity and transcript cursors.
-- `turns` binds one agent interaction to one checkpoint and payload digest.
+- `turns` binds one agent interaction to its current checkpoint and payload digest.
+- `turn_prompts` preserves every distinct prompt when a host reuses an interaction identifier for a steer.
 - `items` materializes the current causal tree.
 - `events` retains append-only provenance, including explicit subtree deletion.
 - `messages` retains normalized transcript evidence for reconstruction.
 
-Agent writes use WAL mode, a busy timeout, immediate transactions, deferred parent validation, transcript identity anchors, optimistic item revisions, and payload-verified interaction idempotency. A map mutation and its interaction checkpoint commit together.
+Agent writes use WAL mode, a busy timeout, immediate transactions, deferred parent validation, transcript identity anchors, optimistic item revisions, and payload-verified interaction idempotency. A map mutation and its interaction checkpoint commit together. A distinct later prompt under the same interaction identifier invalidates that checkpoint while preserving its mutations, so the agent can record an incremental correction from current revisions. Stop also requests one bounded reconciliation when a checkpoint is more than 60 seconds old.
 
 The display route is a stable, lowercased, percent-encoded form of the path beneath the user's home directory. It is an identity and command-line selector, not a URL. Case-folded collisions are rejected rather than merged.
 

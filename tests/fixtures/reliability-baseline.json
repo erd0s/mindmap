@@ -1,0 +1,56 @@
+{
+  "baseline": {
+    "name": "v0.3.0 production audit",
+    "date": "2026-08-30",
+    "projects": 15,
+    "attached_sessions": 76,
+    "available_transcripts": 73,
+    "turns": 460,
+    "checkpoints_before_audit_close": 430,
+    "attempted_checkpoint_corrections_rejected": 9,
+    "durable_material_checkpoint_errors": 2,
+    "malformed_payloads_silently_accepted": 1
+  },
+  "cases": [
+    {
+      "id": "strict-record-schema",
+      "goal": "Reject missing, misspelled, or unknown record fields instead of accepting a false no-change checkpoint.",
+      "baseline_passed": false
+    },
+    {
+      "id": "same-interaction-steer",
+      "goal": "Preserve every distinct prompt, reopen an earlier checkpoint, and accept an incremental correction after a same-id steer.",
+      "baseline_passed": false
+    },
+    {
+      "id": "post-checkpoint-work",
+      "goal": "Detect the long post-checkpoint window seen in the audited premature-checkpoint failures and require reconciliation.",
+      "baseline_passed": false
+    },
+    {
+      "id": "unbounded-semantic-growth",
+      "goal": "Allow a causal map to grow beyond 24 meaningful concepts while retaining per-turn, root, depth, and chronology guards.",
+      "baseline_passed": false
+    },
+    {
+      "id": "settle-then-reopen",
+      "goal": "Preserve a justified settled-to-open transition when later evidence reopens the work.",
+      "baseline_passed": true
+    },
+    {
+      "id": "causal-parent-independence",
+      "goal": "Keep a settled causal parent independent from an unresolved child instead of applying task-style roll-up.",
+      "baseline_passed": true
+    },
+    {
+      "id": "divergent-replay-safety",
+      "goal": "Reject a different payload when no new prompt has legitimately reopened the interaction.",
+      "baseline_passed": true
+    },
+    {
+      "id": "explicit-no-change",
+      "goal": "Continue accepting a deliberate checkpoint with a valid empty operations array.",
+      "baseline_passed": true
+    }
+  ]
+}

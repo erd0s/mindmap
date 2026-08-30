@@ -64,6 +64,7 @@ Keep the map aggressively small:
 - Across sessions, use the matching frontier and its resume point as the continuation anchor. Update that frontier when the thought is unchanged; parent a genuinely new concept beneath it when the work branches. Never default a new session's concepts to the root.
 - Keep one root when the conversation has one governing intent. Use multiple roots only for genuinely independent trains of thought.
 - Remove duplicates, message-like nodes, and obsolete task-board debris when reconciling an older map. Never remove a meaningful settled concept merely to make the current frontier look tidy.
+- “Small” describes the resolution of each concept, not a fixed lifetime node count. Preserve distinct project complexity instead of merging meaningful branches merely because the project has accumulated many concepts.
 
 Prefer stable, human-readable lowercase ids such as `release-pipeline` over turn-specific ids.
 
@@ -81,7 +82,7 @@ Capture plans the user or agent explicitly stated even when nobody has begun the
 
 ## Checkpoint every active turn
 
-Before the final response of every active turn, use the exact injected record command. It accepts one JSON object on stdin:
+After all substantive work and immediately before the final response of every active turn, use the exact injected record command. Do not checkpoint while implementation, commands, tests, research, or requested changes remain; make it the final substantive tool action. It accepts one JSON object on stdin:
 
 ```json
 {
@@ -110,5 +111,7 @@ Use `op: "settle"` with an existing `id` to close an item. If the turn genuinely
 Use `op: "remove"`, an existing `id`, and its `expected_revision` only to eliminate a duplicate or wrongly granular node. If it has children, also supply `reparent_to` with another concept id, or `null` only when those children are genuinely independent roots.
 
 An explicit viewer deletion is stronger than missing map state: retained transcripts remain evidence, but must not resurrect that branch. If the user explicitly asks to restore one of the injected `USER-DELETED BRANCHES`, recreate it with `op: "upsert"` and `restore: true`. Never infer restoration from old transcript text alone.
+
+When a host adds another user prompt under the same interaction id, lifecycle context reports `MINDMAP_CHECKPOINT_REOPENED_V1`. The earlier map mutations remain; review their current revisions and record only additional or corrective changes rather than replaying a stale replacement payload.
 
 The Stop hook allows one recovery pass when a checkpoint was missed, then fails open to prevent a loop.

@@ -18,6 +18,7 @@ class ProductGoalTests(unittest.TestCase):
         self.assertIn("use the matching frontier and its resume point", skill)
         self.assertIn("Never default a new session's concepts to the root", skill)
         self.assertIn("zero to three nodes", skill)
+        self.assertIn("not a fixed lifetime node count", skill)
         self.assertIn("which project root is active", skill)
         self.assertIn("activation covers the whole project directory", skill)
         self.assertIn("MINDMAP_ACTIVATION_BLOCKED_V1", skill)
@@ -26,6 +27,11 @@ class ProductGoalTests(unittest.TestCase):
         self.assertIn("do not claim activation, tracking, checkpointing, or future backfill", skill)
         self.assertIn("USER-DELETED BRANCHES", skill)
         self.assertIn("restore: true", skill)
+        schema = (ROOT / "core/skills/mindmap/references/record-schema.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("no lifetime node-count ceiling", schema)
+        self.assertNotIn("capped at 24 concepts", schema)
 
     def test_reference_fixture_is_a_small_connected_causal_tree(self) -> None:
         transcript = json.loads((ROOT / "tests/fixtures/compression-session.json").read_text())

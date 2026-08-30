@@ -20,7 +20,6 @@ from .transcripts import read_transcript_batch
 VALID_STATES = {"planned", "open", "settled"}
 VALID_KINDS = {"goal", "thread", "decision", "task", "question", "note"}
 MAX_NEW_ITEMS_PER_RECORD = 20
-MAX_PROJECT_ITEMS = 24
 MAX_ROOT_ITEMS = 4
 MAX_TREE_DEPTH = 10
 MAX_CHECKPOINT_SUMMARY_LENGTH = 500
@@ -152,6 +151,14 @@ class Store:
                     last_assistant_message TEXT,
                     UNIQUE(session_pk, interaction_id)
                 );
+                CREATE TABLE IF NOT EXISTS turn_prompts (
+                    id INTEGER PRIMARY KEY,
+                    turn_id INTEGER NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+                    prompt TEXT NOT NULL,
+                    prompt_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(turn_id, prompt_hash)
+                );
                 CREATE TABLE IF NOT EXISTS items (
                     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
                     item_id TEXT NOT NULL,
@@ -197,6 +204,7 @@ class Store:
                 CREATE INDEX IF NOT EXISTS idx_projects_active ON projects(active, root_path);
                 CREATE INDEX IF NOT EXISTS idx_events_project ON events(project_id, id DESC);
                 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_pk, id);
+                CREATE INDEX IF NOT EXISTS idx_turn_prompts_turn ON turn_prompts(turn_id, id);
                 """
             )
         # executescript commits by design. Acquire a separate immediate write lock
@@ -551,10 +559,19 @@ class Store:
         session_pk: int,
         interaction_id: str,
         prompt: str = "",
-    ) -> None:
+    ) -> dict[str, bool]:
         now = utc_now()
-        excerpt = prompt.strip()[:500]
+        normalized_prompt = prompt.strip()
+        excerpt = normalized_prompt[:500]
+        prompt_hash = hashlib.sha256(normalized_prompt.encode("utf-8")).hexdigest()
         with self.transaction() as connection:
+            existing = connection.execute(
+                """
+                SELECT id, checkpointed_at FROM turns
+                WHERE session_pk = ? AND interaction_id = ?
+                """,
+                (session_pk, interaction_id),
+            ).fetchone()
             connection.execute(
                 """
                 INSERT INTO turns
@@ -562,11 +579,78 @@ class Store:
                 VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(session_pk, interaction_id) DO UPDATE SET
                   prompt_excerpt = CASE
-                    WHEN excluded.prompt_excerpt <> '' THEN excluded.prompt_excerpt
+                    WHEN (turns.prompt_excerpt IS NULL OR turns.prompt_excerpt = '')
+                      AND excluded.prompt_excerpt <> '' THEN excluded.prompt_excerpt
                     ELSE turns.prompt_excerpt END
                 """,
                 (project_id, session_pk, interaction_id, excerpt, now),
             )
+            turn = connection.execute(
+                """
+                SELECT id, checkpointed_at FROM turns
+                WHERE session_pk = ? AND interaction_id = ?
+                """,
+                (session_pk, interaction_id),
+            ).fetchone()
+            new_prompt = False
+            if normalized_prompt:
+                inserted = connection.execute(
+                    """
+                    INSERT OR IGNORE INTO turn_prompts
+                      (turn_id, prompt, prompt_hash, created_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (turn["id"], normalized_prompt, prompt_hash, now),
+                )
+                new_prompt = inserted.rowcount == 1
+            checkpoint_invalidated = bool(
+                existing and existing["checkpointed_at"] and new_prompt
+            )
+            if checkpoint_invalidated:
+                connection.execute(
+                    """
+                    UPDATE turns SET checkpointed_at = NULL, checkpoint_summary = NULL,
+                      checkpoint_payload_hash = NULL, last_assistant_message = NULL
+                    WHERE id = ?
+                    """,
+                    (turn["id"],),
+                )
+                self._event(
+                    connection,
+                    project_id,
+                    "turn.checkpoint_invalidated",
+                    {"reason": "additional_prompt", "prompt_hash": prompt_hash},
+                    session_pk=session_pk,
+                    interaction_id=interaction_id,
+                    idempotency_key=(
+                        f"checkpoint-invalidated:{session_pk}:{interaction_id}:{prompt_hash}"
+                    ),
+                )
+            return {
+                "new_prompt": new_prompt,
+                "checkpoint_invalidated": checkpoint_invalidated,
+            }
+
+    def turn_prompts(
+        self, host: str, session_id: str, interaction_id: str
+    ) -> list[dict[str, Any]]:
+        session = self.session(host, session_id)
+        if not session:
+            raise MindmapError(f"Unknown session {host}/{session_id}.")
+        with self.read_connection() as connection:
+            return [
+                dict(row)
+                for row in connection.execute(
+                    """
+                    SELECT tp.prompt, tp.prompt_hash, tp.created_at
+                    FROM turn_prompts tp
+                    JOIN turns t ON t.id = tp.turn_id
+                    WHERE t.session_pk = ? AND t.interaction_id = ?
+                    ORDER BY tp.id
+                    """,
+                    (session["id"], interaction_id),
+                )
+            ]
 
     def import_transcript(self, host: str, session_id: str) -> dict[str, Any]:
         total_imported = 0
@@ -749,16 +833,29 @@ class Store:
             raise MindmapError(
                 f"Unsupported operation {action!r}; use 'upsert', 'settle', or 'remove'."
             )
-        item_id = operation.get("id")
-        if not isinstance(item_id, str) or not item_id.strip():
-            raise MindmapError("Every operation requires a non-empty string id.")
-        if len(item_id) > 100:
-            raise MindmapError("Item ids must be 100 characters or shorter.")
         if "restore" in operation:
             if operation["restore"] is not True:
                 raise MindmapError("restore must be true when supplied.")
             if action != "upsert":
                 raise MindmapError("restore is valid only for an upsert operation.")
+        allowed_fields = {
+            "upsert": {
+                "op", "id", "title", "summary", "resume", "state", "kind",
+                "parent_id", "sort_order", "expected_revision", "restore",
+            },
+            "settle": {"op", "id", "title", "summary", "resume", "expected_revision"},
+            "remove": {"op", "id", "expected_revision", "reparent_to"},
+        }[action]
+        unknown_fields = sorted(set(operation) - allowed_fields)
+        if unknown_fields:
+            raise MindmapError(
+                f"Unsupported {action} field(s): {', '.join(unknown_fields)}."
+            )
+        item_id = operation.get("id")
+        if not isinstance(item_id, str) or not item_id.strip():
+            raise MindmapError("Every operation requires a non-empty string id.")
+        if len(item_id) > 100:
+            raise MindmapError("Item ids must be 100 characters or shorter.")
         for field in ("title", "summary", "resume"):
             if field in operation and not isinstance(operation[field], str):
                 raise MindmapError(f"{field} must be a string when supplied.")
@@ -820,10 +917,6 @@ class Store:
                 raise MindmapError(
                     f"Item {item_id!r} refers to unknown parent {parent_id!r}."
                 )
-        if len(parents) > MAX_PROJECT_ITEMS:
-            raise MindmapError(
-                f"A project map may contain at most {MAX_PROJECT_ITEMS} concepts; merge or remove over-granular nodes."
-            )
         root_count = sum(parent_id is None for parent_id in parents.values())
         if root_count > MAX_ROOT_ITEMS:
             raise MindmapError(
@@ -855,7 +948,15 @@ class Store:
         project = self.find_project(root, active_only=True)
         if not project:
             raise MindmapError(f"No active Mindmap project contains {canonical_path(root)}.")
-        operations = payload.get("operations", [])
+        allowed_payload_fields = {"summary", "operations", "concept_model"}
+        unknown_payload_fields = sorted(set(payload) - allowed_payload_fields)
+        if unknown_payload_fields:
+            raise MindmapError(
+                "Unsupported record field(s): " + ", ".join(unknown_payload_fields) + "."
+            )
+        if "operations" not in payload:
+            raise MindmapError("A record payload must include an operations array.")
+        operations = payload["operations"]
         if not isinstance(operations, list):
             raise MindmapError("operations must be a JSON array.")
         for operation in operations:
@@ -1028,7 +1129,9 @@ class Store:
                         session_pk=session["id"],
                         interaction_id=interaction_id,
                         item_id=item_id,
-                        idempotency_key=f"record:{host}:{session_id}:{interaction_id}:{index}",
+                        idempotency_key=(
+                            f"record:{host}:{session_id}:{interaction_id}:{payload_hash}:{index}"
+                        ),
                     )
                     connection.execute(
                         "DELETE FROM items WHERE project_id = ? AND item_id = ?",
@@ -1114,7 +1217,9 @@ class Store:
                     session_pk=session["id"],
                     interaction_id=interaction_id,
                     item_id=item_id,
-                    idempotency_key=f"record:{host}:{session_id}:{interaction_id}:{index}",
+                    idempotency_key=(
+                        f"record:{host}:{session_id}:{interaction_id}:{payload_hash}:{index}"
+                    ),
                 )
                 changed.append(item_id)
             if operations:
@@ -1148,7 +1253,9 @@ class Store:
                 {"summary": summary.strip(), "changed": changed},
                 session_pk=session["id"],
                 interaction_id=interaction_id,
-                idempotency_key=f"checkpoint:{host}:{session_id}:{interaction_id}",
+                idempotency_key=(
+                    f"checkpoint:{host}:{session_id}:{interaction_id}:{payload_hash}"
+                ),
             )
             connection.execute(
                 "UPDATE projects SET updated_at = ? WHERE id = ?", (now, project["id"])
@@ -1168,6 +1275,51 @@ class Store:
                 (session["id"], interaction_id),
             ).fetchone()
             return bool(row and row["checkpointed_at"])
+
+    def invalidate_checkpoint(
+        self,
+        host: str,
+        session_id: str,
+        interaction_id: str,
+        reason: str,
+        details: dict[str, Any] | None = None,
+    ) -> bool:
+        session = self.session(host, session_id)
+        if not session:
+            return False
+        with self.transaction() as connection:
+            turn = connection.execute(
+                """
+                SELECT id, project_id, checkpointed_at, checkpoint_payload_hash
+                FROM turns
+                WHERE session_pk = ? AND interaction_id = ?
+                """,
+                (session["id"], interaction_id),
+            ).fetchone()
+            if not turn or not turn["checkpointed_at"]:
+                return False
+            connection.execute(
+                """
+                UPDATE turns SET checkpointed_at = NULL, checkpoint_summary = NULL,
+                  checkpoint_payload_hash = NULL
+                WHERE id = ?
+                """,
+                (turn["id"],),
+            )
+            payload = {"reason": reason, **(details or {})}
+            self._event(
+                connection,
+                turn["project_id"],
+                "turn.checkpoint_invalidated",
+                payload,
+                session_pk=session["id"],
+                interaction_id=interaction_id,
+                idempotency_key=(
+                    f"checkpoint-invalidated:{session['id']}:{interaction_id}:"
+                    f"{reason}:{turn['checkpoint_payload_hash']}"
+                ),
+            )
+            return True
 
     def turn(self, host: str, session_id: str, interaction_id: str) -> dict[str, Any] | None:
         session = self.session(host, session_id)
@@ -1318,8 +1470,6 @@ class Store:
                 overdeep = True
                 break
         legacy_bounds = []
-        if len(items) > MAX_PROJECT_ITEMS:
-            legacy_bounds.append(f"{len(items)} concepts (limit {MAX_PROJECT_ITEMS})")
         root_count = len(children.get(None, []))
         if root_count > MAX_ROOT_ITEMS:
             legacy_bounds.append(f"{root_count} roots (limit {MAX_ROOT_ITEMS})")
