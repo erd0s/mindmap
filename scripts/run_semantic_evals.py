@@ -350,11 +350,19 @@ def run_trial(
         )
         score = score_fixture(fixture, before["items"], after["items"])
         checkpointed = checkpoint_count(after) > checkpoint_count(before)
+        execution_passed = returncode == 0
         problems = list(score.problems)
-        if returncode != 0:
+        if not execution_passed:
             problems.append(f"{host} exited {returncode}")
         if not checkpointed:
             problems.append("agent produced no new Mindmap checkpoint")
+        failure_classes = []
+        if not execution_passed:
+            failure_classes.append("execution")
+        if not checkpointed:
+            failure_classes.append("checkpoint")
+        if not score.passed:
+            failure_classes.append("semantic")
         return {
             "host": host,
             "host_version": host_version,
@@ -367,6 +375,11 @@ def run_trial(
             "model": model or "host-default",
             "scorer_version": SCORER_VERSION,
             "passed": not problems,
+            "execution_passed": execution_passed,
+            "checkpointed": checkpointed,
+            "semantic_passed": score.passed,
+            "failure_classes": failure_classes,
+            "returncode": returncode,
             "metrics": score.metrics,
             "matched": score.matched,
             "problems": problems,
@@ -397,14 +410,16 @@ def summarize(results: list[dict[str, Any]], hosts: tuple[str, ...]) -> dict[str
     )
     summary: dict[str, Any] = {}
     for name, group in groups.items():
+        executed = [result for result in group if result.get("execution_passed")]
+        checkpointed = [result for result in executed if result.get("checkpointed")]
         metrics: dict[str, dict[str, float]] = {}
         metric_names = sorted(
-            {metric for result in group for metric in result.get("metrics", {})}
+            {metric for result in checkpointed for metric in result.get("metrics", {})}
         )
         for metric in metric_names:
             values = [
                 float(result["metrics"][metric])
-                for result in group
+                for result in checkpointed
                 if metric in result.get("metrics", {})
             ]
             if values:
@@ -413,10 +428,23 @@ def summarize(results: list[dict[str, Any]], hosts: tuple[str, ...]) -> dict[str
                     "minimum": min(values),
                 }
         passed = sum(bool(result.get("passed")) for result in group)
+        semantic_passed = sum(
+            bool(result.get("semantic_passed")) for result in checkpointed
+        )
         summary[name] = {
             "passed": passed,
             "trials": len(group),
             "pass_rate": passed / len(group) if group else 0.0,
+            "executed": len(executed),
+            "availability_rate": len(executed) / len(group) if group else 0.0,
+            "checkpointed": len(checkpointed),
+            "checkpoint_rate_given_execution": (
+                len(checkpointed) / len(executed) if executed else 0.0
+            ),
+            "semantic_passed": semantic_passed,
+            "semantic_pass_rate_given_checkpoint": (
+                semantic_passed / len(checkpointed) if checkpointed else 0.0
+            ),
             "metrics": metrics,
         }
     return summary
@@ -517,6 +545,11 @@ def main() -> int:
                             "model": model or "host-default",
                             "scorer_version": SCORER_VERSION,
                             "passed": False,
+                            "execution_passed": False,
+                            "checkpointed": False,
+                            "semantic_passed": False,
+                            "failure_classes": ["harness"],
+                            "returncode": None,
                             "metrics": {},
                             "matched": {},
                             "problems": [str(exc)],
@@ -569,7 +602,12 @@ def main() -> int:
                 print("- package working tree: dirty (result is not release-reproducible)")
             for host in hosts:
                 host_summary = summary[host]
-                print(f"- {host}: {host_summary['passed']}/{host_summary['trials']}")
+                print(
+                    f"- {host}: overall {host_summary['passed']}/{host_summary['trials']}; "
+                    f"executed {host_summary['executed']}/{host_summary['trials']}; "
+                    f"semantic {host_summary['semantic_passed']}/"
+                    f"{host_summary['checkpointed']} checkpointed"
+                )
             if args.output:
                 print(f"- JSON report: {args.output}")
         return 0 if all(result["passed"] for result in results) else 1

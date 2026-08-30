@@ -123,10 +123,13 @@ new project, database, session, and isolated Codex plugin home; Claude loads the
 selected plugin directory directly. Both hosts see the same seeded graph and
 prompt. The report records the package commit, dirty state, and label; harness
 commit and dirty state; host version; requested
-model, fixture digest, scorer version, checkpoint delta, structural metrics,
-problems, final answer, and resulting graph. JSON reports include mean and
-minimum metrics per host as well as every individual trial. A live run remains
-opt-in because it calls paid/non-deterministic models.
+model, fixture digest, scorer version, execution result, checkpoint delta,
+structural metrics, problems, final answer, and resulting graph. JSON reports
+separate host availability, checkpoint coverage conditional on execution, and
+semantic correctness conditional on checkpointing; a host/API refusal is not
+mislabelled as a map-quality error. They include mean and minimum metrics per
+host as well as every individual trial. A live run remains opt-in because it
+calls paid/non-deterministic models.
 
 ### Layer 4: version comparison
 
@@ -145,6 +148,12 @@ host/fixture digests and scorer versions, then reports pass-rate and mean/minimu
 metric deltas globally, per host, and per fixture. Use at least five trials per
 cell and the same explicit host models. Model nondeterminism means a one-trial
 comparison is only a wiring smoke test, not evidence of improvement.
+
+Retained reports contain the resulting graph, so a scorer or fixture-equivalence
+bug can be corrected without paying for another model run. Use
+`scripts/rescore_semantic_report.py`; it preserves package provenance and raw
+agent output while recording the new harness/scorer identity and fixture digest.
+Never silently overwrite the raw report.
 
 ### Layer 5: production canary and full audit
 
@@ -242,7 +251,24 @@ Status: in progress.
 
 The deterministic suite moves from 4/8 passing baseline cases to 8/8 on the working tree. Strict schema validation, same-interaction steer recovery, growth beyond 24 concepts, and the observed long premature-checkpoint window now pass. The full local validation gate passed after that slice, including 83 Python tests, 17 frontend tests, Go tests, package parity, builds, and official Codex and Claude validators. One isolated live Codex frontier-handoff trial also passed.
 
-The first semantic-runner calibration gives useful evidence rather than a blanket green result. On the local-install closure case, Codex and Claude both settled the existing node without creating another concept (2/2). On the Paperclip contradiction, both hosts correctly reopened the existing settled concept; Codex reused it compactly, while Claude also created a redundant symptom child and therefore failed the resolution/precision constraint (Codex 1/1, Claude 0/1). These are smoke trials, not stable rates. They show that the shared lifecycle can deliver the required transition on both paths, while host prompting/model behaviour can still differ in graph resolution.
+The first semantic-runner calibration gave useful evidence rather than a blanket green result. On the local-install closure case, Codex and Claude both settled the existing node without creating another concept (2/2). On the Paperclip contradiction, both hosts correctly reopened the existing settled concept; Codex reused it compactly, while Claude also created a redundant symptom child and therefore failed the resolution/precision constraint (Codex 1/1, Claude 0/1). A later repeated sample did not reproduce that Claude over-resolution, confirming why individual trials and repeated rates both matter.
+
+The first retained candidate sweep ran five trials for every one of the five
+fixtures on both hosts (50 sessions). Closure, reopening, stale-resume repair,
+state accuracy, transition accuracy, and causal-parent independence were
+semantically correct in every session that executed. Three Claude sessions were
+blocked by an Anthropic safeguard before any response or checkpoint; these are
+host availability failures, not map failures. The sole repeatable semantic
+weakness was the dense workforce turn: Codex omitted material handoff/prerequisite
+branches in 2/5 trials and Claude omitted the handoff in 4/5 trials. In the other
+four trials, the original scorer incorrectly rejected harmless completion/use
+guidance on settled nodes; scorer v2 removes that unrelated workforce assertion.
+The calibrated result is therefore Codex 23/25 semantic passes and Claude 18/22
+among executed/checkpointed sessions. The failures motivate an explicit skill
+rule: a root summary does not replace a distinct side quest, deliverable/handoff,
+or deferred plan, while evidence that merely reopens an existing concept should
+not become a duplicate child. That candidate rule must now beat this frozen
+pre-rule report in a repeated targeted trial before the full v0.3.0 comparison.
 
 General semantic detection of fast post-checkpoint omissions remains a programme-level gap; the one-minute safeguard still needs production false-positive measurement. The remaining semantic cases need repeated runs, the Claude permission case still needs an integration fixture, and v0.3.0-versus-candidate reports plus human cold-read scoring are required before release.
 
@@ -256,6 +282,8 @@ make test
 make validate
 make test-frontier-handoff
 make test-semantic-evals
+PYTHONPATH=src:. python3 scripts/rescore_semantic_report.py \
+  /path/to/raw-results.json --output /path/to/rescored-results.json
 ```
 
 For an actual controlled before/after semantic comparison, create a detached

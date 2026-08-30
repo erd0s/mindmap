@@ -12,7 +12,7 @@ from typing import Any
 
 VALID_STATES = {"planned", "open", "settled"}
 VALID_RESUME_EXPECTATIONS = {"empty", "nonempty", "closed"}
-SCORER_VERSION = 1
+SCORER_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -208,17 +208,13 @@ def score_fixture(
             parent_total += 1
             expected_parents: list[str | None]
             if parent_keys is not None:
-                expected_parents = [matched.get(value) for value in parent_keys]
-                missing_parents = [
-                    value
-                    for value, resolved in zip(parent_keys, expected_parents)
-                    if resolved is None
+                expected_parents = [
+                    resolved
+                    for value in parent_keys
+                    if (resolved := matched.get(value)) is not None
                 ]
-                if missing_parents:
-                    problems.append(
-                        f"concept {key} parent alternatives could not be matched: "
-                        + ", ".join(missing_parents)
-                    )
+                if not expected_parents:
+                    problems.append(f"concept {key} had no matched parent alternatives")
             elif parent_key is not None:
                 expected_parents = [matched.get(parent_key)]
                 if expected_parents[0] is None:

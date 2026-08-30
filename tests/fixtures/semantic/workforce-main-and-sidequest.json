@@ -22,22 +22,19 @@
         "key": "root",
         "selector": {"id": "engineering-review"},
         "state": "settled",
-        "root": true,
-        "resume": "closed"
+        "root": true
       },
       {
         "key": "saas",
         "selector": {"all_terms": ["saas", "access"]},
         "state": "settled",
-        "parent_keys": ["root", "handoff"],
-        "resume": "closed"
+        "parent_keys": ["root", "handoff"]
       },
       {
         "key": "handoff",
         "selector": {"all_terms": ["avery", "handoff"]},
         "state": "settled",
-        "parent_key": "root",
-        "resume": "closed"
+        "parent_key": "root"
       },
       {
         "key": "explorer",

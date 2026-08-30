@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from scripts.compare_semantic_evals import compare_reports
+from scripts.rescore_semantic_report import rescore_report
 from scripts.semantic_eval import load_fixture, score_fixture, seed_items
 
 
@@ -105,6 +106,9 @@ class SemanticEvaluationTests(unittest.TestCase):
                         "fixture": "closure",
                         "fixture_digest": "same-fixture",
                         "passed": passed,
+                        "execution_passed": True,
+                        "checkpointed": True,
+                        "semantic_passed": passed,
                         "metrics": {"state_accuracy": state_accuracy},
                     }
                 ],
@@ -121,6 +125,29 @@ class SemanticEvaluationTests(unittest.TestCase):
             report("baseline", True, 1.0), report("candidate", False, 0.0)
         )
         self.assertTrue(regression["regressions"])
+
+    def test_retained_report_can_be_rescored_without_another_model_run(self) -> None:
+        fixture = load_fixture(FIXTURES / "local-installation-closure.json")
+        report = {
+            "schema_version": 1,
+            "package": "candidate",
+            "scorer_version": 1,
+            "results": [
+                {
+                    "host": "codex",
+                    "fixture": fixture["id"],
+                    "trial": 1,
+                    "passed": False,
+                    "checkpoint_delta": 1,
+                    "items": fixture["reference_items"],
+                    "problems": ["old scorer failure"],
+                }
+            ],
+        }
+        rescored = rescore_report(report)
+        self.assertTrue(rescored["results"][0]["passed"])
+        self.assertEqual(rescored["results"][0]["problems"], [])
+        self.assertEqual(rescored["summary"]["all"]["semantic_passed"], 1)
 
 
 if __name__ == "__main__":

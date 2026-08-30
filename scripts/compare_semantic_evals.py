@@ -28,15 +28,21 @@ def _groups(results: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
 
 
 def _summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+    executed = [result for result in results if result.get("execution_passed", True)]
+    checkpointed = [
+        result
+        for result in executed
+        if result.get("checkpointed", int(result.get("checkpoint_delta") or 0) > 0)
+    ]
     passed = sum(bool(result.get("passed")) for result in results)
     metric_names = sorted(
-        {name for result in results for name in result.get("metrics", {})}
+        {name for result in checkpointed for name in result.get("metrics", {})}
     )
     metrics = {}
     for name in metric_names:
         values = [
             float(result["metrics"][name])
-            for result in results
+            for result in checkpointed
             if name in result.get("metrics", {})
         ]
         if values:
@@ -44,10 +50,21 @@ def _summary(results: list[dict[str, Any]]) -> dict[str, Any]:
                 "mean": sum(values) / len(values),
                 "minimum": min(values),
             }
+    semantic_passed = sum(
+        bool(result.get("semantic_passed", result.get("passed")))
+        for result in checkpointed
+    )
     return {
         "trials": len(results),
         "passed": passed,
         "pass_rate": passed / len(results) if results else 0.0,
+        "availability_rate": len(executed) / len(results) if results else 0.0,
+        "checkpoint_rate_given_execution": (
+            len(checkpointed) / len(executed) if executed else 0.0
+        ),
+        "semantic_pass_rate_given_checkpoint": (
+            semantic_passed / len(checkpointed) if checkpointed else 0.0
+        ),
         "metrics": metrics,
     }
 
@@ -88,6 +105,17 @@ def compare_reports(
         if pass_delta < 0:
             regressions.append(f"{group} pass rate regressed by {abs(pass_delta):.3f}")
         metric_deltas = {}
+        rate_deltas = {
+            rate: after[rate] - before[rate]
+            for rate in (
+                "availability_rate",
+                "checkpoint_rate_given_execution",
+                "semantic_pass_rate_given_checkpoint",
+            )
+        }
+        for rate, delta in rate_deltas.items():
+            if delta < 0:
+                regressions.append(f"{group} {rate} regressed by {abs(delta):.3f}")
         shared_metrics = set(before["metrics"]) & set(after["metrics"])
         for metric in sorted(shared_metrics):
             mean_delta = after["metrics"][metric]["mean"] - before["metrics"][metric]["mean"]
@@ -111,6 +139,7 @@ def compare_reports(
             "baseline": before,
             "candidate": after,
             "pass_rate_delta": pass_delta,
+            "rate_deltas": rate_deltas,
             "metric_deltas": metric_deltas,
         }
     return {
@@ -144,6 +173,8 @@ def main() -> int:
         overall = comparison["comparisons"].get("all")
         if overall:
             print(f"Pass-rate delta: {overall['pass_rate_delta']:+.3f}")
+            for rate, delta in overall["rate_deltas"].items():
+                print(f"{rate}: {delta:+.3f}")
             for metric, delta in overall["metric_deltas"].items():
                 print(
                     f"{metric}: mean {delta['mean']:+.3f}, "

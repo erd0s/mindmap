@@ -19,6 +19,8 @@ class ProductGoalTests(unittest.TestCase):
         self.assertIn("Never default a new session's concepts to the root", skill)
         self.assertIn("zero to three nodes", skill)
         self.assertIn("not a fixed lifetime node count", skill)
+        self.assertIn("root summary is not a substitute", skill)
+        self.assertIn("only restates the symptom", skill)
         self.assertIn("which project root is active", skill)
         self.assertIn("activation covers the whole project directory", skill)
         self.assertIn("MINDMAP_ACTIVATION_BLOCKED_V1", skill)

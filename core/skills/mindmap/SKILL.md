@@ -63,6 +63,8 @@ Keep the map aggressively small:
 - Keep one root when the conversation has one governing intent. Use multiple roots only for genuinely independent trains of thought.
 - Remove duplicates, message-like nodes, and obsolete task-board debris when reconciling an older map. Never remove a meaningful settled concept merely to make the current frontier look tidy.
 - “Small” describes the resolution of each concept, not a fixed lifetime node count. Preserve distinct project complexity instead of merging meaningful branches merely because the project has accumulated many concepts.
+- Preserve a branch when the conversation treated it as a distinct side quest, deliverable or handoff, decision, or deferred plan with its own state, evidence, recipient, or re-entry point. Mentioning that idea in a root summary is not a substitute for the branch when a later session must distinguish it from the governing goal. In a dense turn, check every explicitly resolved blocker, completed deliverable, and deferred intention before checkpointing so the last side quest does not displace the main result.
+- Conversely, when new evidence merely changes the state of an existing concept, update or reopen that concept. Do not create a child that only restates the symptom or evidence unless it became an independently discussed investigation or plan.
 
 Prefer stable, human-readable lowercase ids such as `release-pipeline` over turn-specific ids.
 
