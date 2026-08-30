@@ -269,10 +269,10 @@ git worktree add --detach "$baseline_checkout" v0.3.0
 set +e
 PYTHONPATH=src:. python3 scripts/run_semantic_evals.py \
   --host both --runs 5 --package-root "$baseline_checkout" --label v0.3.0 \
-  --json > /var/tmp/mindmap-v0.3.0-results.json
+  --output /var/tmp/mindmap-v0.3.0-results.json
 PYTHONPATH=src:. python3 scripts/run_semantic_evals.py \
   --host both --runs 5 --package-root . --label candidate \
-  --json > /var/tmp/mindmap-candidate-results.json
+  --output /var/tmp/mindmap-candidate-results.json
 set -e
 
 PYTHONPATH=src:. python3 scripts/compare_semantic_evals.py \

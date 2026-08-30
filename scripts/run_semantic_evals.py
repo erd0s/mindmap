@@ -437,6 +437,11 @@ def main() -> int:
     )
     parser.add_argument("--label", help="Package label stored with results (default: directory name).")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Write the complete JSON report to this path while retaining console progress.",
+    )
     args = parser.parse_args()
     if args.runs < 1:
         parser.error("--runs must be at least 1")
@@ -529,24 +534,22 @@ def main() -> int:
                         if result["final"]:
                             print("Final:", result["final"])
         summary = summarize(results, hosts)
+        report = {
+            "schema_version": 1,
+            "package": package_label,
+            "package_root": str(package_root),
+            "package_commit": package_commit,
+            "package_dirty": package_dirty,
+            "harness_commit": harness_commit,
+            "harness_dirty": harness_dirty,
+            "scorer_version": SCORER_VERSION,
+            "summary": summary,
+            "results": results,
+        }
+        if args.output:
+            args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         if args.json:
-            print(
-                json.dumps(
-                    {
-                        "schema_version": 1,
-                        "package": package_label,
-                        "package_root": str(package_root),
-                        "package_commit": package_commit,
-                        "package_dirty": package_dirty,
-                        "harness_commit": harness_commit,
-                        "harness_dirty": harness_dirty,
-                        "scorer_version": SCORER_VERSION,
-                        "summary": summary,
-                        "results": results,
-                    },
-                    indent=2,
-                )
-            )
+            print(json.dumps(report, indent=2))
         else:
             overall = summary["all"]
             print(
@@ -558,6 +561,8 @@ def main() -> int:
             for host in hosts:
                 host_summary = summary[host]
                 print(f"- {host}: {host_summary['passed']}/{host_summary['trials']}")
+            if args.output:
+                print(f"- JSON report: {args.output}")
         return 0 if all(result["passed"] for result in results) else 1
     finally:
         if codex_temporary is not None:
