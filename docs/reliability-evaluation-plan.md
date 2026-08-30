@@ -258,7 +258,7 @@ Status: in progress.
 
 - Generalize the live frontier runner to the full fixture set and both hosts. **Implemented for five temporal semantic cases.**
 - Add repeated-trial structural scoring and human cold-read review. **Automated scoring, repeated runs, the review rubric, and deterministic packet generation are implemented; an independent reviewer remains.**
-- Compare tagged v0.3.0 with the candidate package. **The pre-commit confirmation is complete; rerun the candidate from its clean checkpoint commit before treating it as release evidence.**
+- Compare tagged v0.3.0 with the candidate package. **Complete: the clean `287f531` candidate was run against the retained tagged baseline.**
 - Run a production canary, then repeat the full CASS audit.
 - Promote the reliability evaluation to a release gate after the clean candidate run, cold read, and canary establish stable thresholds.
 
@@ -273,26 +273,25 @@ unresolved checkpoint in the snapshot, and an actionable next-prompt marker.
 
 The controlled semantic run uses the same five temporal fixtures, five trials
 per host and fixture, Codex `gpt-5.6-sol`, Claude `sonnet`, and scorer v5. The
-tagged v0.3.0 package scored 43/50: Codex 25/25 and Claude 18/25. The pre-commit
-candidate scored 46/50: Codex 25/25 and Claude 21/25. Availability and checkpoint
-coverage were 100% in both packages. The candidate gained six percentage points
-overall, three points of mean concept precision, and two points of mean resume
-accuracy, with no subgroup or metric regression.
+tagged v0.3.0 package scored 43/50: Codex 25/25 and Claude 18/25. The clean
+`287f531` candidate scored 48/50: Codex 25/25 and Claude 23/25. Availability and
+checkpoint coverage were 100% in both packages. The candidate gained ten
+percentage points overall, five points of mean concept precision, and two points
+of mean resume accuracy, with no subgroup or metric regression.
 
 Every labelled concept, parent, state, and transition was correct in every
-candidate trial. Explicit stale-resume clearing improved to 10/10 because the
+candidate trial. Explicit stale-resume clearing passed 10/10 because the
 always-visible context now explains that omitted fields are retained and an
-empty resume must be sent explicitly. The remaining four failures are all one
-Claude behavior in the Paperclip fixture: Claude correctly reopens and later
-settles the existing concept, but also creates a redundant child for the concrete
-symptom. Codex reused the existing id in all five trials. This is a host-specific
-resolution/precision gap, not a missed transition.
+empty resume must be sent explicitly. The pre-commit run's four failures and
+the clean run's two failures are all one Claude behavior: Claude correctly
+reopens and later settles the existing concept, but also creates a redundant
+child for the concrete symptom. Codex reused the existing id in all five trials.
+This is a host-specific resolution/precision gap, not a missed transition.
 
-The candidate report was produced from a dirty working tree as a pre-commit
-confirmation. It must be rerun from the clean checkpoint commit before it becomes
-release evidence. A 20-map trial-1 cold-read packet can then be generated without
-package, host, model, result, or scorer labels. The independent review, production
-canary of at least 50 completed turns and one week, and repeated CASS audit remain.
+A 20-map trial-1 cold-read packet has been generated from the clean reports
+without package, host, model, result, or scorer labels. The independent review,
+production canary of at least 50 completed turns and one week, and repeated CASS
+audit remain.
 See `docs/reliability-evaluation-results-2026-08-31.md` for the exact run record.
 
 ## Commands
