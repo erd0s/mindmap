@@ -15,31 +15,66 @@
       "parent_id": null
     }
   ],
-  "prompt": "A broader test just contradicted the earlier result: when three images are selected, only the first image is pasted. Do not fix it in this turn. Update the active Mindmap to reflect the newly unresolved work, then explain the current state.",
-  "expected": {
-    "nodes": [
-      {
-        "key": "capture",
-        "selector": {"id": "multi-image-capture"},
-        "from_state": "settled",
-        "state": "open",
-        "root": true,
-        "resume": "nonempty"
-      }
-    ],
-    "max_new_nodes": 0,
-    "forbidden_title_patterns": ["^(message|turn|prompt|tool)[-_ ]?\\d+"]
-  },
-  "reference_items": [
+  "steps": [
     {
-      "id": "multi-image-capture",
-      "parent_id": null,
-      "title": "Capture multiple images from the Mac companion",
-      "summary": "Broader testing shows that selecting three images pastes only the first, so multi-image capture remains unresolved.",
-      "resume": "Trace the multi-selection payload and verify that all selected images reach the paste operation.",
-      "state": "open",
-      "kind": "task",
-      "revision": 2
+      "id": "contradict-and-reopen",
+      "prompt": "A broader test just contradicted the earlier result: when three images are selected, only the first image is pasted. Do not fix it in this turn. Update the active Mindmap to reflect the newly unresolved work, then explain the current state.",
+      "expected": {
+        "nodes": [
+          {
+            "key": "capture",
+            "selector": {"id": "multi-image-capture"},
+            "from_state": "settled",
+            "state": "open",
+            "root": true,
+            "resume": "nonempty"
+          }
+        ],
+        "max_new_nodes": 0,
+        "forbidden_title_patterns": ["^(message|turn|prompt|tool)[-_ ]?\\d+"]
+      },
+      "reference_items": [
+        {
+          "id": "multi-image-capture",
+          "parent_id": null,
+          "title": "Capture multiple images from the Mac companion",
+          "summary": "Broader testing shows that selecting three images pastes only the first, so multi-image capture remains unresolved.",
+          "resume": "Trace the multi-selection payload and verify that all selected images reach the paste operation.",
+          "state": "open",
+          "kind": "task",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "id": "fix-and-resettle",
+      "prompt": "The multi-image bug is now fixed. The selection payload preserves all images, and tests confirm that three selected images all reach the paste operation. Reconcile the active Mindmap with this completed evidence; do not create a replacement concept.",
+      "expected": {
+        "nodes": [
+          {
+            "key": "capture",
+            "selector": {"id": "multi-image-capture"},
+            "from_state": "open",
+            "state": "settled",
+            "root": true,
+            "resume": "closed"
+          }
+        ],
+        "max_new_nodes": 0,
+        "forbidden_title_patterns": ["^(message|turn|prompt|tool)[-_ ]?\\d+"]
+      },
+      "reference_items": [
+        {
+          "id": "multi-image-capture",
+          "parent_id": null,
+          "title": "Capture multiple images from the Mac companion",
+          "summary": "The corrected selection payload preserves every selected image, verified with a three-image paste test.",
+          "resume": "",
+          "state": "settled",
+          "kind": "task",
+          "revision": 3
+        }
+      ]
     }
   ]
 }

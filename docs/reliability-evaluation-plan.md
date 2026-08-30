@@ -95,8 +95,10 @@ Create versioned cases from the observed failures and good counterexamples:
 Each fixture stores a short synthetic transcript, labelled concepts and transitions, accepted parent alternatives, and forbidden outputs. It does not store private production transcripts.
 
 The versioned schema is JSON under `tests/fixtures/semantic/`. `seed_operations`
-constructs the map visible at the start of the evaluated interaction. `prompt` is
-the one synthetic user turn sent to the host. `expected.nodes` selects concepts
+constructs the map visible at the start of the evaluation. A simple fixture uses
+one `prompt` and `expected` graph. A temporal fixture uses ordered `steps`, each
+with its own prompt, expected graph, and reference graph; the runner requires a
+fresh checkpoint and scores state before and after every step. `expected.nodes` selects concepts
 by stable id or semantic terms and labels their required state, causal parent,
 prior state, and resume semantics. The fixture can also bound new concepts,
 require unchanged concepts, and reject chronology-shaped titles. A
@@ -269,6 +271,18 @@ rule: a root summary does not replace a distinct side quest, deliverable/handoff
 or deferred plan, while evidence that merely reopens an existing concept should
 not become a duplicate child. That candidate rule must now beat this frozen
 pre-rule report in a repeated targeted trial before the full v0.3.0 comparison.
+
+The first targeted rule trial (five runs per host) was inconclusive: Codex scored
+2/5 and Claude 3/5. Inspection showed that the one-turn fixture itself hid the
+fact that the resolved prerequisite had been a distinct side quest; requiring a
+branch from the weaker visible evidence made the result partly a fixture test.
+Scorer v3 therefore upgrades the two temporal cases. Workforce now checkpoints
+the distinct side quest while the main goal is still open, then separately
+checks completion, handoff creation, and explorer deferral. Paperclip now checks
+both settled-to-open on contradictory evidence and open-to-settled after the
+verified fix. This directly measures transition timing instead of inferring it
+from one final graph. Old one-step reports are retained as calibration evidence
+but are not comparable to the new fixture digests.
 
 General semantic detection of fast post-checkpoint omissions remains a programme-level gap; the one-minute safeguard still needs production false-positive measurement. The remaining semantic cases need repeated runs, the Claude permission case still needs an integration fixture, and v0.3.0-versus-candidate reports plus human cold-read scoring are required before release.
 

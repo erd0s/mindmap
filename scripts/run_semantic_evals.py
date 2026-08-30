@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from scripts.semantic_eval import SCORER_VERSION, load_fixture, score_fixture
+from scripts.semantic_eval import SCORER_VERSION, fixture_steps, load_fixture, score_fixture
 from scripts.test_frontier_handoff import (
     mindmap,
     run,
@@ -323,46 +323,92 @@ def run_trial(
                 "operations": fixture["seed_operations"],
             },
         )
-        before = mindmap(
+        initial = mindmap(
             ["snapshot", "--root", str(project)], cwd=project, environment=environment
         )
-        if host == "codex":
-            returncode, final, diagnostics = codex_trial(
-                executable,
-                fixture["prompt"],
-                project=project,
-                data=data,
-                environment=environment,
-                model=model,
+        before = initial
+        step_results = []
+        all_metrics: dict[str, list[float]] = {}
+        all_problems: list[str] = []
+        execution_passed = True
+        checkpointed = True
+        semantic_passed = True
+        steps = fixture_steps(fixture)
+        for index, step in enumerate(steps, start=1):
+            step_id = str(step.get("step_id") or f"step-{index}")
+            if host == "codex":
+                returncode, final, diagnostics = codex_trial(
+                    executable,
+                    step["prompt"],
+                    project=project,
+                    data=data,
+                    environment=environment,
+                    model=model,
+                )
+            else:
+                returncode, final, diagnostics = claude_trial(
+                    executable,
+                    step["prompt"],
+                    project=project,
+                    data=data,
+                    environment=environment,
+                    model=model,
+                    package_root=package_root,
+                )
+            after = mindmap(
+                ["snapshot", "--root", str(project)], cwd=project, environment=environment
             )
-        else:
-            returncode, final, diagnostics = claude_trial(
-                executable,
-                fixture["prompt"],
-                project=project,
-                data=data,
-                environment=environment,
-                model=model,
-                package_root=package_root,
+            score = score_fixture(step, before["items"], after["items"])
+            step_checkpointed = checkpoint_count(after) > checkpoint_count(before)
+            step_execution_passed = returncode == 0
+            step_problems = list(score.problems)
+            if not step_execution_passed:
+                step_problems.append(f"{host} exited {returncode}")
+            if not step_checkpointed:
+                step_problems.append("agent produced no new Mindmap checkpoint")
+            prefix = f"{step_id}: " if len(steps) > 1 else ""
+            all_problems.extend(prefix + problem for problem in step_problems)
+            execution_passed = execution_passed and step_execution_passed
+            checkpointed = checkpointed and step_checkpointed
+            semantic_passed = semantic_passed and score.passed
+            for metric, value in score.metrics.items():
+                all_metrics.setdefault(metric, []).append(value)
+            step_results.append(
+                {
+                    "id": step_id,
+                    "passed": not step_problems,
+                    "execution_passed": step_execution_passed,
+                    "checkpointed": step_checkpointed,
+                    "semantic_passed": score.passed,
+                    "returncode": returncode,
+                    "metrics": score.metrics,
+                    "matched": score.matched,
+                    "problems": step_problems,
+                    "final": final.strip(),
+                    "diagnostics": diagnostics.strip(),
+                    "items": after["items"],
+                    "checkpoint_delta": checkpoint_count(after) - checkpoint_count(before),
+                }
             )
-        after = mindmap(
-            ["snapshot", "--root", str(project)], cwd=project, environment=environment
-        )
-        score = score_fixture(fixture, before["items"], after["items"])
-        checkpointed = checkpoint_count(after) > checkpoint_count(before)
-        execution_passed = returncode == 0
-        problems = list(score.problems)
-        if not execution_passed:
-            problems.append(f"{host} exited {returncode}")
-        if not checkpointed:
-            problems.append("agent produced no new Mindmap checkpoint")
+            before = after
         failure_classes = []
         if not execution_passed:
             failure_classes.append("execution")
         if not checkpointed:
             failure_classes.append("checkpoint")
-        if not score.passed:
+        if not semantic_passed:
             failure_classes.append("semantic")
+        metrics = {
+            metric: sum(values) / len(values) for metric, values in all_metrics.items()
+        }
+        final = "\n\n".join(
+            f"[{step['id']}]\n{step['final']}" for step in step_results if step["final"]
+        )
+        diagnostics = "\n\n".join(
+            f"[{step['id']}]\n{step['diagnostics']}"
+            for step in step_results
+            if step["diagnostics"]
+        )
         return {
             "host": host,
             "host_version": host_version,
@@ -374,19 +420,20 @@ def run_trial(
             "package_dirty": package_dirty,
             "model": model or "host-default",
             "scorer_version": SCORER_VERSION,
-            "passed": not problems,
+            "passed": not all_problems,
             "execution_passed": execution_passed,
             "checkpointed": checkpointed,
-            "semantic_passed": score.passed,
+            "semantic_passed": semantic_passed,
             "failure_classes": failure_classes,
-            "returncode": returncode,
-            "metrics": score.metrics,
-            "matched": score.matched,
-            "problems": problems,
-            "final": final.strip(),
-            "diagnostics": diagnostics.strip(),
-            "items": after["items"],
-            "checkpoint_delta": checkpoint_count(after) - checkpoint_count(before),
+            "returncodes": [step["returncode"] for step in step_results],
+            "metrics": metrics,
+            "matched": {step["id"]: step["matched"] for step in step_results},
+            "problems": all_problems,
+            "final": final,
+            "diagnostics": diagnostics,
+            "items": before["items"],
+            "checkpoint_delta": checkpoint_count(before) - checkpoint_count(initial),
+            "steps": step_results,
         }
 
 

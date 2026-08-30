@@ -6,7 +6,7 @@ from pathlib import Path
 
 from scripts.compare_semantic_evals import compare_reports
 from scripts.rescore_semantic_report import rescore_report
-from scripts.semantic_eval import load_fixture, score_fixture, seed_items
+from scripts.semantic_eval import fixture_steps, load_fixture, score_fixture, seed_items
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,19 +23,21 @@ class SemanticEvaluationTests(unittest.TestCase):
         for path in paths:
             with self.subTest(fixture=path.name):
                 fixture = load_fixture(path)
-                score = score_fixture(
-                    fixture, seed_items(fixture), fixture["reference_items"]
-                )
-                self.assertTrue(score.passed, score.problems)
-                self.assertEqual(score.metrics["material_concept_recall"], 1.0)
+                before = seed_items(fixture)
+                for step in fixture_steps(fixture):
+                    score = score_fixture(step, before, step["reference_items"])
+                    self.assertTrue(score.passed, score.problems)
+                    self.assertEqual(score.metrics["material_concept_recall"], 1.0)
+                    before = step["reference_items"]
 
     def test_wrong_state_and_parent_fail_with_specific_evidence(self) -> None:
         fixture = load_fixture(FIXTURES / "workforce-main-and-sidequest.json")
-        actual = copy.deepcopy(fixture["reference_items"])
+        steps = fixture_steps(fixture)
+        actual = copy.deepcopy(steps[-1]["reference_items"])
         explorer = next(item for item in actual if item["id"] == "scenario-explorer")
         explorer["state"] = "open"
         explorer["parent_id"] = None
-        score = score_fixture(fixture, seed_items(fixture), actual)
+        score = score_fixture(steps[-1], steps[0]["reference_items"], actual)
         self.assertFalse(score.passed)
         self.assertTrue(any("explorer state" in problem for problem in score.problems))
         self.assertTrue(any("explorer parent" in problem for problem in score.problems))
@@ -88,10 +90,11 @@ class SemanticEvaluationTests(unittest.TestCase):
 
     def test_declared_equivalent_parent_is_accepted(self) -> None:
         fixture = load_fixture(FIXTURES / "workforce-main-and-sidequest.json")
-        actual = copy.deepcopy(fixture["reference_items"])
+        steps = fixture_steps(fixture)
+        actual = copy.deepcopy(steps[-1]["reference_items"])
         saas = next(item for item in actual if item["id"] == "saas-access")
         saas["parent_id"] = "avery-handoff"
-        score = score_fixture(fixture, seed_items(fixture), actual)
+        score = score_fixture(steps[-1], steps[0]["reference_items"], actual)
         self.assertTrue(score.passed, score.problems)
 
     def test_comparison_reports_improvement_and_regression(self) -> None:

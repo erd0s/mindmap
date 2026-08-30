@@ -12,7 +12,7 @@ from typing import Any
 
 VALID_STATES = {"planned", "open", "settled"}
 VALID_RESUME_EXPECTATIONS = {"empty", "nonempty", "closed"}
-SCORER_VERSION = 2
+SCORER_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -40,12 +40,44 @@ def load_fixture(path: str | Path) -> dict[str, Any]:
 def validate_fixture(fixture: dict[str, Any]) -> None:
     if fixture.get("schema_version") != 1:
         raise ValueError("semantic fixture schema_version must be 1")
-    for field in ("id", "description", "prompt", "seed_operations", "expected"):
+    for field in ("id", "description", "seed_operations"):
         if field not in fixture:
             raise ValueError(f"semantic fixture requires {field}")
     if not isinstance(fixture["seed_operations"], list):
         raise ValueError("seed_operations must be an array")
-    expected = fixture["expected"]
+    steps = fixture.get("steps")
+    if steps is None:
+        if "prompt" not in fixture or "expected" not in fixture:
+            raise ValueError("semantic fixture requires prompt and expected, or steps")
+        _validate_expectations(fixture["expected"])
+    else:
+        if not isinstance(steps, list) or not steps:
+            raise ValueError("semantic fixture steps must be a non-empty array")
+        step_ids: set[str] = set()
+        for step in steps:
+            if not isinstance(step, dict):
+                raise ValueError("every semantic fixture step must be an object")
+            step_id = step.get("id")
+            if not isinstance(step_id, str) or not step_id or step_id in step_ids:
+                raise ValueError("every semantic fixture step requires a unique id")
+            step_ids.add(step_id)
+            if not isinstance(step.get("prompt"), str) or not step["prompt"].strip():
+                raise ValueError(f"semantic fixture step {step_id} requires a prompt")
+            if "expected" not in step:
+                raise ValueError(f"semantic fixture step {step_id} requires expected")
+            _validate_expectations(step["expected"])
+            if not isinstance(step.get("reference_items"), list):
+                raise ValueError(
+                    f"semantic fixture step {step_id} requires reference_items"
+                )
+    reference = fixture.get("reference_items")
+    if reference is not None and not isinstance(reference, list):
+        raise ValueError("reference_items must be an array when supplied")
+
+
+def _validate_expectations(expected: dict[str, Any]) -> None:
+    if not isinstance(expected, dict):
+        raise ValueError("expected must be an object")
     nodes = expected.get("nodes")
     if not isinstance(nodes, list) or not nodes:
         raise ValueError("expected.nodes must be a non-empty array")
@@ -78,9 +110,26 @@ def validate_fixture(fixture: dict[str, Any]) -> None:
         resume = node.get("resume")
         if resume is not None and resume not in VALID_RESUME_EXPECTATIONS:
             raise ValueError(f"expected node {key} has invalid resume expectation {resume!r}")
-    reference = fixture.get("reference_items")
-    if reference is not None and not isinstance(reference, list):
-        raise ValueError("reference_items must be an array when supplied")
+
+
+def fixture_steps(fixture: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return independently scoreable interaction views for a fixture."""
+    validate_fixture(fixture)
+    if "steps" not in fixture:
+        return [fixture]
+    return [
+        {
+            "schema_version": fixture["schema_version"],
+            "id": fixture["id"],
+            "description": fixture["description"],
+            "seed_operations": fixture["seed_operations"],
+            "prompt": step["prompt"],
+            "expected": step["expected"],
+            "reference_items": step["reference_items"],
+            "step_id": step["id"],
+        }
+        for step in fixture["steps"]
+    ]
 
 
 def _searchable(item: dict[str, Any]) -> str:

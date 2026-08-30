@@ -16,7 +16,54 @@ from scripts.run_semantic_evals import (
     package_revision,
     summarize,
 )
-from scripts.semantic_eval import SCORER_VERSION, load_fixture, score_fixture, seed_items
+from scripts.semantic_eval import (
+    SCORER_VERSION,
+    fixture_steps,
+    load_fixture,
+    score_fixture,
+    seed_items,
+)
+
+
+def _rescore_step(
+    original: dict[str, Any],
+    fixture: dict[str, Any],
+    before_items: list[dict[str, Any]],
+    host: str,
+) -> dict[str, Any]:
+    score = score_fixture(fixture, before_items, original.get("items", []))
+    execution_passed = bool(
+        original.get(
+            "execution_passed",
+            not any(" exited " in problem for problem in original.get("problems", [])),
+        )
+    )
+    checkpointed = bool(
+        original.get("checkpointed", int(original.get("checkpoint_delta") or 0) > 0)
+    )
+    problems = list(score.problems)
+    if not execution_passed:
+        returncode = original.get("returncode")
+        problems.append(
+            f"{host} exited {returncode}"
+            if returncode is not None
+            else f"{host} execution failed"
+        )
+    if not checkpointed:
+        problems.append("agent produced no new Mindmap checkpoint")
+    updated = dict(original)
+    updated.update(
+        {
+            "passed": not problems,
+            "execution_passed": execution_passed,
+            "checkpointed": checkpointed,
+            "semantic_passed": score.passed,
+            "metrics": score.metrics,
+            "matched": score.matched,
+            "problems": problems,
+        }
+    )
+    return updated
 
 
 def rescore_report(report: dict[str, Any]) -> dict[str, Any]:
@@ -33,32 +80,46 @@ def rescore_report(report: dict[str, Any]) -> dict[str, Any]:
         if fixture_id not in fixtures:
             raise ValueError(f"report uses unknown fixture {fixture_id!r}")
         fixture = fixtures[fixture_id]
-        score = score_fixture(fixture, seed_items(fixture), result.get("items", []))
-        execution_passed = bool(
-            result.get(
-                "execution_passed",
-                not any(" exited " in problem for problem in result.get("problems", [])),
+        steps = fixture_steps(fixture)
+        original_steps = result.get("steps")
+        if len(steps) > 1 and (
+            not isinstance(original_steps, list) or len(original_steps) != len(steps)
+        ):
+            raise ValueError(
+                f"report fixture {fixture_id!r} lacks the {len(steps)} retained step graphs "
+                "required by the current fixture"
             )
-        )
-        checkpointed = bool(
-            result.get("checkpointed", int(result.get("checkpoint_delta") or 0) > 0)
-        )
-        problems = list(score.problems)
-        if not execution_passed:
-            returncode = result.get("returncode")
-            problems.append(
-                f"{result.get('host')} exited {returncode}"
-                if returncode is not None
-                else f"{result.get('host')} execution failed"
-            )
-        if not checkpointed:
-            problems.append("agent produced no new Mindmap checkpoint")
+        if isinstance(original_steps, list):
+            before = seed_items(fixture)
+            rescored_steps = []
+            for step_fixture, old_step in zip(steps, original_steps):
+                new_step = _rescore_step(
+                    old_step, step_fixture, before, str(result.get("host"))
+                )
+                rescored_steps.append(new_step)
+                before = new_step.get("items", [])
+        else:
+            rescored_steps = [
+                _rescore_step(
+                    result, steps[0], seed_items(fixture), str(result.get("host"))
+                )
+            ]
+        execution_passed = all(step["execution_passed"] for step in rescored_steps)
+        checkpointed = all(step["checkpointed"] for step in rescored_steps)
+        semantic_passed = all(step["semantic_passed"] for step in rescored_steps)
+        problems = []
+        metrics: dict[str, list[float]] = {}
+        for step in rescored_steps:
+            prefix = f"{step.get('id')}: " if len(rescored_steps) > 1 else ""
+            problems.extend(prefix + problem for problem in step["problems"])
+            for metric, value in step["metrics"].items():
+                metrics.setdefault(metric, []).append(value)
         failure_classes = []
         if not execution_passed:
             failure_classes.append("execution")
         if not checkpointed:
             failure_classes.append("checkpoint")
-        if not score.passed:
+        if not semantic_passed:
             failure_classes.append("semantic")
         result.update(
             {
@@ -67,11 +128,18 @@ def rescore_report(report: dict[str, Any]) -> dict[str, Any]:
                 "passed": not problems,
                 "execution_passed": execution_passed,
                 "checkpointed": checkpointed,
-                "semantic_passed": score.passed,
+                "semantic_passed": semantic_passed,
                 "failure_classes": failure_classes,
-                "metrics": score.metrics,
-                "matched": score.matched,
+                "metrics": {
+                    metric: sum(values) / len(values)
+                    for metric, values in metrics.items()
+                },
+                "matched": {
+                    str(step.get("id") or f"step-{index}"): step["matched"]
+                    for index, step in enumerate(rescored_steps, start=1)
+                },
                 "problems": problems,
+                "steps": rescored_steps,
             }
         )
         rescored.append(result)
