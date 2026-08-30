@@ -39,7 +39,9 @@ Install the local marketplace/plugin, then begin a fresh Codex session inside th
 
 Expected: the first record reconstructs those concepts rather than creating one node per message. The future plan remains `planned`. Finish the session, begin another beneath the same project, and invoke `$mindmap:manage status`; the prior tree should already be present in SessionStart context.
 
-In a host that supports steering, checkpoint a turn and then add another user prompt under the same interaction. Expected: the next injected context contains `MINDMAP_CHECKPOINT_REOPENED_V1`, preserves both prompts, retains the first mutations, and requires an incremental corrective checkpoint. Also simulate a checkpoint more than 60 seconds before Stop in an isolated test database. Expected: Stop requests one reconciliation pass rather than accepting the old checkpoint.
+In a host that supports steering, checkpoint a turn and then add another user prompt under the same interaction. Expected: the next injected context contains `MINDMAP_CHECKPOINT_REOPENED_V1`, preserves both prompts, retains the first mutations, and requires an incremental corrective checkpoint.
+
+Next, let the record command run, execute another shell or edit tool immediately, and finish within one second. Expected: Stop reports `post_checkpoint_tool_activity` and requests one reconciliation pass. A long, clean final response after a generation-aware checkpoint must not reopen merely because sixty seconds passed. Also simulate an old zero-generation checkpoint more than 60 seconds before Stop. Expected: the legacy fallback still requests one reconciliation pass.
 
 Grow the fixture beyond 24 meaningful sibling concepts across several turns. Expected: the map accepts them. A single checkpoint with 21 new concepts, a fifth independent root, a branch deeper than ten levels, and a numbered turn/message node must still fail independently.
 
@@ -64,6 +66,14 @@ claude --plugin-dir ./plugins/claude/mindmap
 Begin a fresh local session in the same project, invoke `/mindmap:manage status`, and record one new branch.
 
 Expected: Claude sees the Codex-created map. Codex sees Claude's update in a later turn. Neither host reports a lock error.
+
+Run the isolated unattended-permission case:
+
+```sh
+make test-claude-permission
+```
+
+Expected: built-in shell access and external MCP servers are unavailable, Claude completes without a checkpoint, the snapshot reports one unresolved checkpoint, and a synthetic next prompt receives `MINDMAP_PRIOR_CHECKPOINT_MISSING_V1`. Repeat once with the normal MCP configuration and built-in `Bash` denied. Record the actual tool name used; an MCP shell executor is a valid alternate path and must still advance the tool generation.
 
 ## 5. Live terminal update and deletion
 

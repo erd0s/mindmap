@@ -159,6 +159,36 @@ def post_checkpoint_work() -> Result:
         return Result(blocked, f"Stop reconciliation requested={blocked}")
 
 
+def fast_post_checkpoint_tool_work() -> Result:
+    with isolated_store() as (store, root):
+        prompt = {
+            "hook_event_name": "UserPromptSubmit", "cwd": str(root),
+            "session_id": "fast-work", "turn_id": "fast-turn",
+            "prompt": "$mindmap:manage start",
+        }
+        handle_hook("codex", prompt, store)
+        handle_hook("codex", {
+            "hook_event_name": "PreToolUse", "cwd": str(root),
+            "session_id": "fast-work", "turn_id": "fast-turn", "tool_name": "Bash",
+        }, store)
+        store.record(
+            root, "codex", "fast-work", "fast-turn",
+            {"summary": "Premature checkpoint", "operations": []},
+        )
+        handle_hook("codex", {
+            "hook_event_name": "PreToolUse", "cwd": str(root),
+            "session_id": "fast-work", "turn_id": "fast-turn", "tool_name": "apply_patch",
+        }, store)
+        output = handle_hook("codex", {
+            "hook_event_name": "Stop", "cwd": str(root),
+            "session_id": "fast-work", "turn_id": "fast-turn",
+            "stop_hook_active": False,
+            "last_assistant_message": "Finished within one second of checkpointing.",
+        }, store)
+        blocked = bool(output and output.get("decision") == "block")
+        return Result(blocked, f"fast Stop reconciliation requested={blocked}")
+
+
 def unbounded_semantic_growth() -> Result:
     with isolated_store() as (store, root):
         project = activate(store, root)
@@ -239,15 +269,76 @@ def explicit_no_change() -> Result:
         return Result(bool(result["checkpointed"] and not result["changed"]), "explicit empty operations checkpoint accepted")
 
 
+def stale_frontier_warnings() -> Result:
+    with isolated_store() as (store, root):
+        project = activate(store, root)
+        store.record(root, "codex", "eval", "stale", {
+            "summary": "Seeded stale frontier cases",
+            "operations": [
+                {
+                    "op": "upsert", "id": "old-action", "title": "Old action",
+                    "state": "settled", "resume": "Run the remaining migration.",
+                },
+                {
+                    "op": "upsert", "id": "completed-open", "title": "Local install",
+                    "state": "open", "summary": "The local install is complete and verified.",
+                },
+                {
+                    "op": "upsert", "id": "conditional", "title": "Conditional review",
+                    "state": "settled", "resume": "Reopen when evidence changes.",
+                },
+            ],
+        })
+        warnings = store.project_snapshot(project["id"])["semantic_warnings"]
+        keys = {(warning["code"], warning["item_id"]) for warning in warnings}
+        expected = {
+            ("settled_action_resume", "old-action"),
+            ("state_summary_contradiction", "completed-open"),
+        }
+        return Result(keys == expected, f"warnings={sorted(keys)}")
+
+
+def claude_unattended_diagnostic() -> Result:
+    with isolated_store() as (store, root):
+        project = store.activate(root)
+        handle_hook("claude", {
+            "hook_event_name": "UserPromptSubmit", "cwd": str(root),
+            "session_id": "denied", "prompt_id": "first", "prompt": "Finish work",
+        }, store)
+        handle_hook("claude", {
+            "hook_event_name": "PreToolUse", "cwd": str(root),
+            "session_id": "denied", "tool_name": "Bash",
+        }, store)
+        handle_hook("claude", {
+            "hook_event_name": "Stop", "cwd": str(root),
+            "session_id": "denied", "prompt_id": "first", "stop_hook_active": True,
+            "last_assistant_message": "Work completed, but record was denied.",
+        }, store)
+        output = handle_hook("claude", {
+            "hook_event_name": "UserPromptSubmit", "cwd": str(root),
+            "session_id": "denied", "prompt_id": "second", "prompt": "Continue",
+        }, store)
+        context = output["hookSpecificOutput"]["additionalContext"]
+        sessions = store.project_snapshot(project["id"])["sessions"]
+        passed = (
+            "MINDMAP_PRIOR_CHECKPOINT_MISSING_V1" in context
+            and sessions[0]["unresolved_checkpoint_count"] == 1
+        )
+        return Result(passed, "missing prior checkpoint is visible and actionable")
+
+
 EVALUATORS: dict[str, Callable[[], Result]] = {
     "strict-record-schema": strict_record_schema,
     "same-interaction-steer": same_interaction_steer,
     "post-checkpoint-work": post_checkpoint_work,
+    "fast-post-checkpoint-tool-work": fast_post_checkpoint_tool_work,
     "unbounded-semantic-growth": unbounded_semantic_growth,
     "settle-then-reopen": settle_then_reopen,
     "causal-parent-independence": causal_parent_independence,
     "divergent-replay-safety": divergent_replay_safety,
     "explicit-no-change": explicit_no_change,
+    "stale-frontier-warnings": stale_frontier_warnings,
+    "claude-unattended-diagnostic": claude_unattended_diagnostic,
 }
 
 

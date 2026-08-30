@@ -335,6 +335,123 @@ class StoreTests(unittest.TestCase):
         self.assertIn("FRONTIER:", context)
         self.assertIn("Resume:", context)
 
+    def test_semantic_warnings_flag_stale_frontiers_without_changing_state(self) -> None:
+        project = self.activate()
+        self.store.register_session(project["id"], "codex", "warnings")
+        self.store.record(
+            self.project_root, "codex", "warnings", "seed",
+            {"summary": "Seed warning and counterexample cases", "operations": [
+                {
+                    "op": "upsert", "id": "settled-action", "title": "Old delivery",
+                    "state": "settled", "resume": "Run the final migration.",
+                },
+                {
+                    "op": "upsert", "id": "conditional", "title": "Verified capture",
+                    "state": "settled", "resume": "Run the check if evidence changes.",
+                    "parent_id": "settled-action",
+                },
+                {
+                    "op": "upsert", "id": "contradiction", "title": "Local install",
+                    "state": "open", "summary": "The local installation is complete and verified.",
+                    "parent_id": "settled-action",
+                },
+                {
+                    "op": "upsert", "id": "superseded", "title": "Old direction",
+                    "state": "planned", "summary": "This direction was superseded by the replacement.",
+                },
+                {
+                    "op": "upsert", "id": "reopened", "title": "Capture images",
+                    "state": "settled", "summary": "Capture originally worked.",
+                    "parent_id": "settled-action",
+                },
+                {
+                    "op": "upsert", "id": "explained-reopen", "title": "Upload images",
+                    "state": "settled", "summary": "Upload originally worked.",
+                    "parent_id": "settled-action",
+                },
+            ]},
+        )
+        self.store.record(
+            self.project_root, "codex", "warnings", "reopen",
+            {"summary": "Contradictory evidence reopened capture", "operations": [
+                {
+                    "op": "upsert", "id": "reopened", "state": "open",
+                    "expected_revision": 1,
+                },
+                {
+                    "op": "upsert", "id": "explained-reopen", "state": "open",
+                    "summary": "Broader testing exposed an upload failure.",
+                    "resume": "Fix the broader upload failure.", "expected_revision": 1,
+                },
+            ]},
+        )
+        snapshot = self.store.project_snapshot(project["id"])
+        warning_keys = {
+            (warning["code"], warning["item_id"])
+            for warning in snapshot["semantic_warnings"]
+        }
+        self.assertEqual(warning_keys, {
+            ("settled_action_resume", "settled-action"),
+            ("state_summary_contradiction", "contradiction"),
+            ("superseded_root_frontier", "superseded"),
+            ("reversion_without_context", "reopened"),
+        })
+        states = {item["id"]: item["state"] for item in snapshot["items"]}
+        self.assertEqual(states["contradiction"], "open")
+        self.assertEqual(states["superseded"], "planned")
+        context = self.store.context(self.project_root)
+        self.assertIn("MINDMAP_SEMANTIC_WARNINGS_V1", context)
+        self.assertIn("do not auto-settle causal parents", context)
+
+    def test_semantic_warning_counterexamples_remain_quiet(self) -> None:
+        project = self.activate()
+        self.store.register_session(project["id"], "codex", "quiet-warnings")
+        self.store.record(
+            self.project_root, "codex", "quiet-warnings", "seed",
+            {"summary": "Valid closure and maintenance guidance", "operations": [
+                {
+                    "op": "upsert", "id": "none", "title": "Closed work",
+                    "state": "settled", "resume": "No follow-up remains.",
+                    "parent_id": "unfinished",
+                },
+                {
+                    "op": "upsert", "id": "reopen-when", "title": "Conditional work",
+                    "state": "settled", "resume": "Reopen when the upstream API changes.",
+                    "parent_id": "unfinished",
+                },
+                {
+                    "op": "upsert", "id": "maintenance", "title": "Maintenance",
+                    "state": "settled", "resume": "Monitor the release channel for regressions.",
+                    "parent_id": "unfinished",
+                },
+                {
+                    "op": "upsert", "id": "unfinished", "title": "Unfinished work",
+                    "state": "open", "summary": "The implementation is not complete.",
+                    "resume": "Finish the implementation.",
+                },
+                {
+                    "op": "upsert", "id": "backlog", "title": "Finish the backlog",
+                    "state": "open", "summary": "Phase one is complete. Phase two remains.",
+                    "resume": "Implement phase two.", "parent_id": "unfinished",
+                },
+                {
+                    "op": "upsert", "id": "future", "title": "Later quality review",
+                    "state": "planned",
+                    "summary": "Apply this review only after the current companion is complete.",
+                    "resume": "Review the next goal.", "parent_id": "unfinished",
+                },
+                {
+                    "op": "upsert", "id": "active-root", "title": "Active workflow",
+                    "state": "open", "summary": "The workflow remains active.",
+                    "resume": "Delete the superseded private repository, then run the pilot.",
+                },
+            ]},
+        )
+        self.assertEqual(
+            self.store.project_snapshot(project["id"])["semantic_warnings"], []
+        )
+        self.assertNotIn("MINDMAP_SEMANTIC_WARNINGS_V1", self.store.context(self.project_root))
+
     def test_user_deleted_branch_requires_explicit_restore(self) -> None:
         project = self.activate()
         self.store.register_session(project["id"], "codex", "restore-session")
@@ -916,6 +1033,10 @@ class StoreTests(unittest.TestCase):
             turn_columns = {row[1] for row in connection.execute("PRAGMA table_info(turns)")}
         self.assertIn("transcript_anchor_hash", session_columns)
         self.assertIn("checkpoint_payload_hash", turn_columns)
+        self.assertIn("tool_activity_generation", turn_columns)
+        self.assertIn("checkpoint_tool_activity_generation", turn_columns)
+        self.assertIn("last_tool_name", turn_columns)
+        self.assertIn("last_tool_at", turn_columns)
 
     def test_missing_transcript_preserves_rotation_identity_and_anchor(self) -> None:
         project = self.activate()

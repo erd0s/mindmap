@@ -211,106 +211,107 @@ Status: implemented and verified in the current working tree.
 - Give checkpoints older than 60 seconds at Stop one bounded reconciliation pass.
 - Remove the lifetime 24-concept limit while retaining semantic structure guards.
 
-The 60-second rule catches the two audited long-running premature checkpoints. It is a safety net, not a semantic proof: a fast omission can still pass, and a legitimately long final response may trigger one unnecessary reconciliation. Measure both false negatives and false positives before treating the threshold as permanent.
+The 60-second rule caught the two audited long-running premature checkpoints, but it was not a semantic proof: a fast omission could pass, and a legitimately long final response could trigger an unnecessary reconciliation. Phase 2 now keeps it only for zero-generation checkpoints written by an older hook package or direct command.
 
 ### Phase 2: make checkpoint finality explicit
 
-Status: planned.
+Status: implemented and verified in the current working tree.
 
-- Evaluate whether transcript activity can distinguish substantive post-checkpoint work from the record result and final prose on both hosts.
-- Compare that design with explicit draft/final checkpoint generations.
-- Retain append-only checkpoint provenance and expose unresolved invalidations.
-- Replace or supplement the time heuristic only when the new mechanism scores better on the frozen cases.
+- `PreToolUse` advances a per-turn generation before each observed local or MCP tool.
+- `record` snapshots that generation, which includes the record tool itself but not a later tool.
+- Stop invalidates a checkpoint when the current generation exceeds its snapshot and records `post_checkpoint_tool_activity` provenance.
+- The 60-second rule runs only when the checkpoint generation is zero.
+- A lightweight activity path avoids the full lifecycle/schema startup on every tool event.
+
+The frozen finality matrix contains eight audited failure shapes and valid counterexamples. Run it with `make eval-checkpoint-finality`.
+
+| Strategy | Correct | False positives | False negatives |
+|---|---:|---:|---:|
+| Age over 60 seconds | 3/8 | 1 | 4 |
+| Any normalized assistant transcript activity | 5/8 | 3 | 0 |
+| Tool generation with zero-generation age fallback | 6/8 | 0 | 2 |
+| Reconcile every Stop | 5/8 | 3 | 0 |
+
+The generation strategy wins because it catches fast shell and edit work without reopening clean turns. Transcript activity and unconditional reconciliation catch more semantic changes, but both reopen every ordinary final response in the fixture. Two explicit gaps remain: a hosted tool that emits no local tool event, and a new plan introduced only in final prose.
 
 ### Phase 3: detect stale semantic frontiers
 
-Status: planned.
+Status: implemented and verified in the current working tree.
 
-- Add warning-only checks for settled nodes with action-like resume text, direct summary contradictions, stale aggregate roots, and planned/open reversions without recorded rationale.
-- Distinguish unfinished resumes from maintenance or “reopen when” guidance.
-- Let the agent reconcile warnings; never auto-settle causal parents.
+- Context and snapshots report warning-only checks for settled nodes with action-like resumes, open/planned summaries that explicitly claim completion, superseded unresolved roots, and settled-to-open reversions that update neither summary nor resume.
+- Counterexamples cover “no follow-up,” maintenance, conditional-reopen guidance, and explicitly explained reversions.
+- The agent reconciles warnings from conversation evidence. Deterministic code never auto-settles a causal parent.
 
 ### Phase 4: harden host integrations
 
-Status: planned.
+Status: implemented for unattended record failure; remaining host release checks stay manual.
 
-- Add a Claude unattended permission and launcher self-test.
-- Make record failures visible at the next prompt and in local diagnostics.
-- Test Codex steers and Claude fresh subagent sessions separately while keeping shared store behavior identical.
-- Mark zero-turn and missing transcript attachments explicitly.
+- The deterministic Claude denial case leaves the completed-output turn uncheckpointed, reports it in the session snapshot, and injects `MINDMAP_PRIOR_CHECKPOINT_MISSING_V1` on the next prompt.
+- The live fixture removes built-in shell access and external MCP servers, then verifies zero checkpoints, one unresolved checkpoint, and the next-prompt diagnostic.
+- A control run showed that Claude can use Serena's MCP shell executor when built-in `Bash` is denied. This is valid alternate execution, not a denied record path; `PreToolUse` still counts it.
+- Codex exact-id steers and Claude's latest-turn `PreToolUse` fallback have separate regression tests while sharing the same store semantics.
+- Zero-turn and missing transcript attachments still need explicit diagnostic classification before the repeated CASS audit.
 
 ### Phase 5: build semantic comparison and release gates
 
 Status: in progress.
 
-- Generalize the live frontier runner to the full fixture set and both hosts. **Implemented for the first five semantic cases.**
-- Add repeated-trial structural scoring and human cold-read review. **Automated scoring and repeated runs are implemented; the review rubric/run remains.**
-- Compare tagged v0.3.0 with the candidate package.
+- Generalize the live frontier runner to the full fixture set and both hosts. **Implemented for five temporal semantic cases.**
+- Add repeated-trial structural scoring and human cold-read review. **Automated scoring, repeated runs, the review rubric, and deterministic packet generation are implemented; an independent reviewer remains.**
+- Compare tagged v0.3.0 with the candidate package. **The pre-commit confirmation is complete; rerun the candidate from its clean checkpoint commit before treating it as release evidence.**
 - Run a production canary, then repeat the full CASS audit.
-- Promote the reliability evaluation to a release gate after its remaining target case passes and live scoring is stable.
+- Promote the reliability evaluation to a release gate after the clean candidate run, cold read, and canary establish stable thresholds.
 
 ## Current result
 
-The deterministic suite moves from 4/8 passing baseline cases to 8/8 on the working tree. Strict schema validation, same-interaction steer recovery, growth beyond 24 concepts, and the observed long premature-checkpoint window now pass. The full local validation gate passed after that slice, including 83 Python tests, 17 frontend tests, Go tests, package parity, builds, and official Codex and Claude validators. One isolated live Codex frontier-handoff trial also passed.
+The deterministic suite moves from 4/11 baseline cases to 11/11 on the working
+tree. The explicit tool-generation strategy scores 6/8 on the frozen finality
+matrix with no false positives; its two known misses are a hosted tool with no
+local hook event and a commitment introduced only in final prose. The live
+Claude permission fixture also passes: zero checkpoints on the denied turn, one
+unresolved checkpoint in the snapshot, and an actionable next-prompt marker.
 
-The first semantic-runner calibration gave useful evidence rather than a blanket green result. On the local-install closure case, Codex and Claude both settled the existing node without creating another concept (2/2). On the Paperclip contradiction, both hosts correctly reopened the existing settled concept; Codex reused it compactly, while Claude also created a redundant symptom child and therefore failed the resolution/precision constraint (Codex 1/1, Claude 0/1). A later repeated sample did not reproduce that Claude over-resolution, confirming why individual trials and repeated rates both matter.
+The controlled semantic run uses the same five temporal fixtures, five trials
+per host and fixture, Codex `gpt-5.6-sol`, Claude `sonnet`, and scorer v5. The
+tagged v0.3.0 package scored 43/50: Codex 25/25 and Claude 18/25. The pre-commit
+candidate scored 46/50: Codex 25/25 and Claude 21/25. Availability and checkpoint
+coverage were 100% in both packages. The candidate gained six percentage points
+overall, three points of mean concept precision, and two points of mean resume
+accuracy, with no subgroup or metric regression.
 
-The first retained candidate sweep ran five trials for every one of the five
-fixtures on both hosts (50 sessions). Closure, reopening, stale-resume repair,
-state accuracy, transition accuracy, and causal-parent independence were
-semantically correct in every session that executed. Three Claude sessions were
-blocked by an Anthropic safeguard before any response or checkpoint; these are
-host availability failures, not map failures. The sole repeatable semantic
-weakness was the dense workforce turn: Codex omitted material handoff/prerequisite
-branches in 2/5 trials and Claude omitted the handoff in 4/5 trials. In the other
-four trials, the original scorer incorrectly rejected harmless completion/use
-guidance on settled nodes; scorer v2 removes that unrelated workforce assertion.
-The calibrated result is therefore Codex 23/25 semantic passes and Claude 18/22
-among executed/checkpointed sessions. The failures motivate an explicit skill
-rule: a root summary does not replace a distinct side quest, deliverable/handoff,
-or deferred plan, while evidence that merely reopens an existing concept should
-not become a duplicate child. That candidate rule must now beat this frozen
-pre-rule report in a repeated targeted trial before the full v0.3.0 comparison.
+Every labelled concept, parent, state, and transition was correct in every
+candidate trial. Explicit stale-resume clearing improved to 10/10 because the
+always-visible context now explains that omitted fields are retained and an
+empty resume must be sent explicitly. The remaining four failures are all one
+Claude behavior in the Paperclip fixture: Claude correctly reopens and later
+settles the existing concept, but also creates a redundant child for the concrete
+symptom. Codex reused the existing id in all five trials. This is a host-specific
+resolution/precision gap, not a missed transition.
 
-The first targeted rule trial (five runs per host) was inconclusive: Codex scored
-2/5 and Claude 3/5. Inspection showed that the one-turn fixture itself hid the
-fact that the resolved prerequisite had been a distinct side quest; requiring a
-branch from the weaker visible evidence made the result partly a fixture test.
-Scorer v3 therefore upgrades the two temporal cases. Workforce now checkpoints
-the distinct side quest while the main goal is still open, then separately
-checks completion, handoff creation, and explorer deferral. Paperclip now checks
-both settled-to-open on contradictory evidence and open-to-settled after the
-verified fix. This directly measures transition timing instead of inferring it
-from one final graph. Old one-step reports are retained as calibration evidence
-but are not comparable to the new fixture digests.
-
-The first retained temporal workforce sample then passed 10/10 after one
-documented equivalence correction: Codex created the still-open comparison and
-planned handoff during the side-quest interaction in one trial, then settled
-them in the completion interaction. That is valid earlier creation, so the
-fixture now accepts either that path or creation at completion while still
-requiring the side quest in step one and the same final material branches and
-states. Codex and Claude each passed 5/5; every scored metric had mean and
-minimum 1.0. This supports the original diagnosis that lost/early checkpoints
-and a one-turn compression surrogate—not the shared state model—caused the
-durable workforce omission. It does not yet validate same-interaction steering,
-which remains covered by the deterministic lifecycle regression rather than
-these fresh-session semantic steps.
-
-General semantic detection of fast post-checkpoint omissions remains a programme-level gap; the one-minute safeguard still needs production false-positive measurement. The remaining semantic cases need repeated runs, the Claude permission case still needs an integration fixture, and v0.3.0-versus-candidate reports plus human cold-read scoring are required before release.
+The candidate report was produced from a dirty working tree as a pre-commit
+confirmation. It must be rerun from the clean checkpoint commit before it becomes
+release evidence. A 20-map trial-1 cold-read packet can then be generated without
+package, host, model, result, or scorer labels. The independent review, production
+canary of at least 50 completed turns and one week, and repeated CASS audit remain.
+See `docs/reliability-evaluation-results-2026-08-31.md` for the exact run record.
 
 ## Commands
 
 ```sh
 make eval-reliability
+make eval-checkpoint-finality
 PYTHONPATH=src python3 scripts/evaluate_reliability.py --json
 PYTHONPATH=src python3 scripts/evaluate_reliability.py --require-targets
 make test
 make validate
 make test-frontier-handoff
 make test-semantic-evals
+make test-claude-permission
 PYTHONPATH=src:. python3 scripts/rescore_semantic_report.py \
   /path/to/raw-results.json --output /path/to/rescored-results.json
+PYTHONPATH=src:. python3 scripts/prepare_cold_read.py \
+  /path/to/baseline-rescored.json /path/to/candidate-rescored.json \
+  --output-dir /path/to/blinded-packet --trial 1 --seed 20260831
 ```
 
 For an actual controlled before/after semantic comparison, create a detached
@@ -324,9 +325,11 @@ git worktree add --detach "$baseline_checkout" v0.3.0
 set +e
 PYTHONPATH=src:. python3 scripts/run_semantic_evals.py \
   --host both --runs 5 --package-root "$baseline_checkout" --label v0.3.0 \
+  --codex-model gpt-5.6-sol --claude-model sonnet \
   --output /var/tmp/mindmap-v0.3.0-results.json
 PYTHONPATH=src:. python3 scripts/run_semantic_evals.py \
   --host both --runs 5 --package-root . --label candidate \
+  --codex-model gpt-5.6-sol --claude-model sonnet \
   --output /var/tmp/mindmap-candidate-results.json
 set -e
 

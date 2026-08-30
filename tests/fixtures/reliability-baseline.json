@@ -28,6 +28,11 @@
       "baseline_passed": false
     },
     {
+      "id": "fast-post-checkpoint-tool-work",
+      "goal": "Detect tool work immediately after a checkpoint without relying on a sixty-second delay.",
+      "baseline_passed": false
+    },
+    {
       "id": "unbounded-semantic-growth",
       "goal": "Allow a causal map to grow beyond 24 meaningful concepts while retaining per-turn, root, depth, and chronology guards.",
       "baseline_passed": false
@@ -51,6 +56,16 @@
       "id": "explicit-no-change",
       "goal": "Continue accepting a deliberate checkpoint with a valid empty operations array.",
       "baseline_passed": true
+    },
+    {
+      "id": "stale-frontier-warnings",
+      "goal": "Surface high-confidence stale or contradictory frontier text without automatically changing causal state.",
+      "baseline_passed": false
+    },
+    {
+      "id": "claude-unattended-diagnostic",
+      "goal": "Make an unattended Claude record denial visible and actionable on the next prompt.",
+      "baseline_passed": false
     }
   ]
 }

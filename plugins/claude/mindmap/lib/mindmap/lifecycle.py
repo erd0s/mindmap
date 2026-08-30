@@ -137,6 +137,8 @@ def _active_context(
         record_command,
         'JSON shape: {"summary":"what changed or no map change","operations":[{"op":"upsert","id":"stable-id","title":"...","summary":"what this concept means","resume":"where to pick it up","state":"planned|open|settled","kind":"goal|thread|decision|task|question|note","parent_id":null,"expected_revision":2}]}. Omit expected_revision for a new id; use the exact current revision for any update, settle, or remove. Add "restore":true only when the user explicitly asks to restore an id listed under USER-DELETED BRANCHES.',
         "Create only meaningful concepts needed for a quick overview. Connect each child to the thought or goal that caused it. Capture explicit future intentions as planned, unresolved concepts as open, and covered/decided/completed/rejected concepts as settled. Do not invent unspoken plans.",
+        'An upsert of an existing concept retains every omitted field. To clear stale frontier text, send "resume":"" explicitly; saying it is cleared in the final response is not a map change.',
+        "When new evidence merely changes the state of an existing concept, update or reopen that same id. Do not add a child that only restates the symptom or evidence unless the conversation made it an independent investigation or plan. Conversely, preserve a distinct side quest, deliverable or handoff, decision, or deferred plan with its own state or re-entry point; a root summary is not a substitute for that branch.",
         "Treat the record command as the final substantive tool action: do not checkpoint while implementation, commands, tests, research, or user-requested changes remain. A later same-interaction user prompt reopens the checkpoint, but ordinary work performed after an early checkpoint may otherwise be omitted.",
     ]
     if action == "start":
@@ -200,6 +202,13 @@ def handle_hook(host: str, payload: dict[str, Any], store: Store | None = None) 
     if not session_id:
         return _additional(event, "Mindmap found an active project, but this hook supplied no session_id.")
 
+    if event == "PreToolUse":
+        tool_name = str(payload.get("tool_name") or "unknown")
+        store.note_tool_activity(
+            project["id"], host, session_id, interaction_id(payload), tool_name
+        )
+        return None
+
     session = store.register_session(
         project["id"],
         host,
@@ -231,6 +240,9 @@ def handle_hook(host: str, payload: dict[str, Any], store: Store | None = None) 
                 "Continue the user's task, warn that this turn will not be mapped, and upgrade the host.",
             )
         turn_status = store.begin_turn(project["id"], session["id"], turn_id, prompt)
+        prior_unresolved = store.prior_unresolved_checkpoint(
+            host, session_id, turn_id
+        )
         effective_action = "sync" if action == "start" and not activated_now else action
         context = _active_context(
             store, project, host, session_id, turn_id, effective_action
@@ -243,6 +255,17 @@ def handle_hook(host: str, payload: dict[str, Any], store: Store | None = None) 
                 "reopened so this added work cannot be silently lost. Review the current revisions "
                 "and record only the additional or corrective semantic changes before finishing; "
                 "do not replay a stale replacement payload."
+            )
+        if prior_unresolved:
+            last_tool = str(prior_unresolved.get("last_tool_name") or "unknown")
+            context += (
+                "\nMINDMAP_PRIOR_CHECKPOINT_MISSING_V1\n"
+                f"Previous interaction {prior_unresolved['interaction_id']} produced a final "
+                f"assistant response but no Mindmap checkpoint; its last observed tool was {last_tool}. "
+                "An unattended host may have denied or failed the injected record command. "
+                "Reconcile any missing semantic changes in this turn, ensure the host is permitted "
+                "to run the exact injected Mindmap record command, and do not claim the previous "
+                "interaction was checkpointed. A successful current checkpoint will cover this warning."
             )
         if transcript_warning:
             context += (
@@ -283,9 +306,43 @@ def handle_hook(host: str, payload: dict[str, Any], store: Store | None = None) 
         checkpoint_age = _checkpoint_age_seconds(
             str(turn.get("checkpointed_at") or "") if turn else None
         )
+        tool_generation = int(turn.get("tool_activity_generation") or 0) if turn else 0
+        checkpoint_tool_generation = (
+            turn.get("checkpoint_tool_activity_generation") if turn else None
+        )
         if (
             checkpointed
             and not bool(payload.get("stop_hook_active"))
+            and checkpoint_tool_generation is not None
+            and tool_generation > int(checkpoint_tool_generation)
+            and store.invalidate_checkpoint(
+                host,
+                session_id,
+                turn_id,
+                "post_checkpoint_tool_activity",
+                {
+                    "checkpoint_generation": int(checkpoint_tool_generation),
+                    "current_generation": tool_generation,
+                    "last_tool_name": str(turn.get("last_tool_name") or "unknown"),
+                },
+            )
+        ):
+            context = _active_context(store, project, host, session_id, turn_id, None)
+            return {
+                "decision": "block",
+                "reason": (
+                    "Mindmap observed a tool call after this turn's checkpoint "
+                    f"({turn.get('last_tool_name') or 'unknown'}; generation "
+                    f"{checkpoint_tool_generation} -> {tool_generation}). Review the "
+                    "post-checkpoint work, record only additional or corrective changes "
+                    "(or a deliberate empty delta), then finish again.\n"
+                    + context
+                ),
+            }
+        if (
+            checkpointed
+            and not bool(payload.get("stop_hook_active"))
+            and int(checkpoint_tool_generation or 0) == 0
             and checkpoint_age is not None
             and checkpoint_age > MAX_CHECKPOINT_TO_STOP_SECONDS
             and store.invalidate_checkpoint(
@@ -326,9 +383,8 @@ def handle_hook(host: str, payload: dict[str, Any], store: Store | None = None) 
     return None
 
 
-def run_hook(host: str) -> int:
+def run_hook_payload(host: str, payload: Any) -> int:
     try:
-        payload = json.load(__import__("sys").stdin)
         if not isinstance(payload, dict):
             raise MindmapError("Hook input must be a JSON object.")
         output = handle_hook(host, payload)
@@ -339,3 +395,12 @@ def run_hook(host: str) -> int:
         # Hooks must fail open: a tracking problem should never strand the coding session.
         print(f"Mindmap hook warning: {exc}", file=__import__("sys").stderr)
         return 0
+
+
+def run_hook(host: str) -> int:
+    try:
+        payload = json.load(__import__("sys").stdin)
+    except Exception as exc:
+        print(f"Mindmap hook warning: {exc}", file=__import__("sys").stderr)
+        return 0
+    return run_hook_payload(host, payload)

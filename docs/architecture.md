@@ -35,13 +35,17 @@ SQLite owns the canonical state:
 
 - `projects` stores root identity, display route, and activation.
 - `sessions` tracks host identity and transcript cursors.
-- `turns` binds one agent interaction to its current checkpoint and payload digest.
+- `turns` binds one agent interaction to its current checkpoint, payload digest, observed tool generation, and unresolved final output.
 - `turn_prompts` preserves every distinct prompt when a host reuses an interaction identifier for a steer.
 - `items` materializes the current causal tree.
 - `events` retains append-only provenance, including explicit subtree deletion.
 - `messages` retains normalized transcript evidence for reconstruction.
 
-Agent writes use WAL mode, a busy timeout, immediate transactions, deferred parent validation, transcript identity anchors, optimistic item revisions, and payload-verified interaction idempotency. A map mutation and its interaction checkpoint commit together. A distinct later prompt under the same interaction identifier invalidates that checkpoint while preserving its mutations, so the agent can record an incremental correction from current revisions. Stop also requests one bounded reconciliation when a checkpoint is more than 60 seconds old.
+Agent writes use WAL mode, a busy timeout, immediate transactions, deferred parent validation, transcript identity anchors, optimistic item revisions, and payload-verified interaction idempotency. A map mutation and its interaction checkpoint commit together. A distinct later prompt under the same interaction identifier invalidates that checkpoint while preserving its mutations, so the agent can record an incremental correction from current revisions.
+
+`PreToolUse` advances a turn's tool generation before each observed local or MCP tool. `record` saves the current generation with the checkpoint. Stop invalidates a checkpoint when the live generation is newer, which catches fast post-checkpoint work. A zero saved generation means the turn came from an older hook package or a direct command, so only those turns retain the 60-second fallback. Hosted tools and new commitments stated only in final prose remain observable gaps; the mechanism is a strong finality signal, not semantic proof.
+
+The fast activity hook performs one narrow SQLite update without importing the full lifecycle runtime or scanning the schema. On the development machine, 20 direct fast-hook processes took 0.84 seconds, compared with 1.24 seconds through the full lifecycle path. The portable shell launcher raised the measured total to 1.16 seconds for 20 calls. These figures are local benchmarks, not test thresholds.
 
 The display route is a stable, lowercased, percent-encoded form of the path beneath the user's home directory. It is an identity and command-line selector, not a URL. Case-folded collisions are rejected rather than merged.
 
@@ -51,9 +55,11 @@ The display route is a stable, lowercased, percent-encoded form of the path bene
 2. `start` activates the project, attaches the current session, and imports available history.
 3. The host adapter supplies project, host, session, and interaction identity.
 4. The skill compresses the session into goals, branches, questions, decisions, plans, and resume points.
-5. Deterministic code validates and atomically records the update.
-6. The Stop hook requests one recovery pass when the current interaction has no checkpoint, then fails open so Mindmap cannot trap the host session.
-7. Future local sessions read the same project map regardless of which supported host wrote it.
+5. A lightweight `PreToolUse` hook advances the active turn's generation before each observed tool; the record command snapshots that generation.
+6. Deterministic code validates and atomically records the update.
+7. The Stop hook requests one recovery pass when the current interaction has no checkpoint or has later observed tool activity, then fails open so Mindmap cannot trap the host session.
+8. If an unattended record attempt still fails, the next prompt identifies the prior unresolved interaction and tells the agent to reconcile it in the current checkpoint.
+9. Future local sessions read the same project map regardless of which supported host wrote it.
 
 Transcript parsing is an adapter rather than a storage contract. Unknown JSONL records are ignored. Claude Stop input supplies the final assistant message because its transcript can lag the hook event.
 

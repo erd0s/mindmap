@@ -1,4 +1,4 @@
-.PHONY: test package validate audit clean mindmap mindmap-dist desktop-test macos-preflight test-frontier-handoff eval-reliability test-semantic-evals
+.PHONY: test package validate audit clean mindmap mindmap-dist desktop-test macos-preflight test-frontier-handoff eval-reliability eval-checkpoint-finality test-semantic-evals test-claude-permission
 
 VERSION := $(shell sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)
 GOVULNCHECK_VERSION := v1.7.0
@@ -31,8 +31,14 @@ test-frontier-handoff: package
 eval-reliability:
 	PYTHONPATH=src python3 scripts/evaluate_reliability.py
 
+eval-checkpoint-finality:
+	python3 scripts/evaluate_checkpoint_finality.py
+
 test-semantic-evals: package
 	PYTHONPATH=src:. python3 scripts/run_semantic_evals.py
+
+test-claude-permission: package
+	python3 scripts/test_claude_unattended_permission.py
 
 package:
 	python3 scripts/build_plugins.py

@@ -66,6 +66,9 @@ class LifecycleTests(unittest.TestCase):
         self.assertIn("/dev/tracked", context)
         self.assertIn("Scope: this entire project directory", context)
         self.assertIn('"restore":true', context)
+        self.assertIn('send "resume":"" explicitly', context)
+        self.assertIn("Do not add a child that only restates the symptom", context)
+        self.assertIn("preserve a distinct side quest", context)
         self.assertIn("USER-DELETED BRANCHES", context)
         self.assertNotIn("http://", context)
         self.assertIsNotNone(self.store.find_project(self.root, active_only=True))
@@ -270,6 +273,58 @@ class LifecycleTests(unittest.TestCase):
             "Recovered and checkpointed nothing.",
         )
 
+    def test_claude_unattended_record_denial_is_visible_on_next_prompt(self) -> None:
+        self.store.activate(self.root)
+        first_prompt = {
+            "hook_event_name": "UserPromptSubmit", "cwd": str(self.root),
+            "session_id": "claude-denied", "prompt_id": "prompt-1",
+            "prompt": "Finish the implementation",
+        }
+        handle_hook("claude", first_prompt, self.store)
+        handle_hook("claude", {
+            "hook_event_name": "PreToolUse", "cwd": str(self.root),
+            "session_id": "claude-denied", "tool_name": "Bash",
+        }, self.store)
+        stop = {
+            "hook_event_name": "Stop", "cwd": str(self.root),
+            "session_id": "claude-denied", "prompt_id": "prompt-1",
+            "stop_hook_active": False,
+            "last_assistant_message": "Implementation is complete, but record was denied.",
+        }
+        self.assertEqual(handle_hook("claude", stop, self.store)["decision"], "block")
+        stop["stop_hook_active"] = True
+        self.assertIsNone(handle_hook("claude", stop, self.store))
+
+        next_prompt = handle_hook("claude", {
+            "hook_event_name": "UserPromptSubmit", "cwd": str(self.root),
+            "session_id": "claude-denied", "prompt_id": "prompt-2",
+            "prompt": "Continue",
+        }, self.store)
+        context = next_prompt["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("MINDMAP_PRIOR_CHECKPOINT_MISSING_V1", context)
+        self.assertIn("prompt-1", context)
+        self.assertIn("last observed tool was Bash", context)
+        self.assertIn("permitted", context)
+        project = self.store.find_project(self.root)
+        session = self.store.project_snapshot(project["id"])["sessions"][0]
+        self.assertEqual(session["unresolved_checkpoint_count"], 1)
+
+        self.store.record(
+            self.root, "claude", "claude-denied", "prompt-2",
+            {"summary": "Reconciled the denied checkpoint", "operations": []},
+        )
+        final_prompt = handle_hook("claude", {
+            "hook_event_name": "UserPromptSubmit", "cwd": str(self.root),
+            "session_id": "claude-denied", "prompt_id": "prompt-3",
+            "prompt": "One more turn",
+        }, self.store)
+        self.assertNotIn(
+            "MINDMAP_PRIOR_CHECKPOINT_MISSING_V1",
+            final_prompt["hookSpecificOutput"]["additionalContext"],
+        )
+        session = self.store.project_snapshot(project["id"])["sessions"][0]
+        self.assertEqual(session["unresolved_checkpoint_count"], 0)
+
     def test_checkpoint_allows_stop_and_captures_last_message(self) -> None:
         handle_hook("codex", self.codex_prompt("$mindmap:manage start"), self.store)
         self.store.record(
@@ -296,6 +351,68 @@ class LifecycleTests(unittest.TestCase):
             "Initial map is ready",
             self.store.turn("codex", "codex-session", "turn-1")["last_assistant_message"],
         )
+
+    def test_record_tool_activity_is_included_in_checkpoint_generation(self) -> None:
+        handle_hook("codex", self.codex_prompt("$mindmap:manage start"), self.store)
+        self.assertIsNone(handle_hook("codex", {
+            "hook_event_name": "PreToolUse", "cwd": str(self.root),
+            "session_id": "codex-session", "turn_id": "turn-1",
+            "tool_name": "Bash",
+        }, self.store))
+        self.store.record(
+            self.root, "codex", "codex-session", "turn-1",
+            {"summary": "Record was the final tool", "operations": []},
+        )
+        turn = self.store.turn("codex", "codex-session", "turn-1")
+        self.assertEqual(turn["tool_activity_generation"], 1)
+        self.assertEqual(turn["checkpoint_tool_activity_generation"], 1)
+        self.assertIsNone(handle_hook("codex", {
+            "hook_event_name": "Stop", "cwd": str(self.root),
+            "session_id": "codex-session", "turn_id": "turn-1",
+            "stop_hook_active": False, "last_assistant_message": "Done.",
+        }, self.store))
+
+    def test_fast_post_checkpoint_tool_activity_reopens_codex_turn(self) -> None:
+        handle_hook("codex", self.codex_prompt("$mindmap:manage start"), self.store)
+        handle_hook("codex", {
+            "hook_event_name": "PreToolUse", "cwd": str(self.root),
+            "session_id": "codex-session", "turn_id": "turn-1",
+            "tool_name": "Bash",
+        }, self.store)
+        self.store.record(
+            self.root, "codex", "codex-session", "turn-1",
+            {"summary": "Checkpointed early", "operations": []},
+        )
+        handle_hook("codex", {
+            "hook_event_name": "PreToolUse", "cwd": str(self.root),
+            "session_id": "codex-session", "turn_id": "turn-1",
+            "tool_name": "apply_patch",
+        }, self.store)
+        blocked = handle_hook("codex", {
+            "hook_event_name": "Stop", "cwd": str(self.root),
+            "session_id": "codex-session", "turn_id": "turn-1",
+            "stop_hook_active": False,
+            "last_assistant_message": "Finished immediately after checkpointing.",
+        }, self.store)
+        self.assertEqual(blocked["decision"], "block")
+        self.assertIn("apply_patch", blocked["reason"])
+        self.assertIn("generation 1 -> 2", blocked["reason"])
+        self.assertFalse(self.store.is_checkpointed("codex", "codex-session", "turn-1"))
+
+    def test_claude_pre_tool_use_resolves_latest_turn_without_prompt_id(self) -> None:
+        self.store.activate(self.root)
+        handle_hook("claude", {
+            "hook_event_name": "UserPromptSubmit", "cwd": str(self.root),
+            "session_id": "claude-session", "prompt_id": "prompt-1",
+            "prompt": "Implement the fix",
+        }, self.store)
+        handle_hook("claude", {
+            "hook_event_name": "PreToolUse", "cwd": str(self.root),
+            "session_id": "claude-session", "tool_name": "Bash",
+        }, self.store)
+        turn = self.store.turn("claude", "claude-session", "prompt-1")
+        self.assertEqual(turn["tool_activity_generation"], 1)
+        self.assertEqual(turn["last_tool_name"], "Bash")
 
     def test_same_interaction_steer_reopens_checkpoint_and_explains_delta(self) -> None:
         handle_hook("codex", self.codex_prompt("$mindmap:manage start"), self.store)

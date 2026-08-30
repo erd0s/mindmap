@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "description": "Frozen checkpoint-finality signals derived from audited omissions and valid counterexamples.",
+  "cases": [
+    {
+      "id": "clean-fast-final-response",
+      "expected_reconcile": false,
+      "elapsed_seconds": 2,
+      "checkpoint_generation": 1,
+      "current_generation": 1,
+      "assistant_transcript_changed": true
+    },
+    {
+      "id": "clean-long-final-response",
+      "expected_reconcile": false,
+      "elapsed_seconds": 120,
+      "checkpoint_generation": 1,
+      "current_generation": 1,
+      "assistant_transcript_changed": true
+    },
+    {
+      "id": "fast-shell-work-after-checkpoint",
+      "expected_reconcile": true,
+      "elapsed_seconds": 2,
+      "checkpoint_generation": 1,
+      "current_generation": 2,
+      "assistant_transcript_changed": true
+    },
+    {
+      "id": "fast-edit-after-checkpoint",
+      "expected_reconcile": true,
+      "elapsed_seconds": 0.1,
+      "checkpoint_generation": 4,
+      "current_generation": 5,
+      "assistant_transcript_changed": true
+    },
+    {
+      "id": "unobservable-hosted-tool-after-checkpoint",
+      "expected_reconcile": true,
+      "elapsed_seconds": 8,
+      "checkpoint_generation": 2,
+      "current_generation": 2,
+      "assistant_transcript_changed": true
+    },
+    {
+      "id": "new-plan-only-in-final-prose",
+      "expected_reconcile": true,
+      "elapsed_seconds": 3,
+      "checkpoint_generation": 1,
+      "current_generation": 1,
+      "assistant_transcript_changed": true
+    },
+    {
+      "id": "legacy-hook-long-post-checkpoint-work",
+      "expected_reconcile": true,
+      "elapsed_seconds": 120,
+      "checkpoint_generation": 0,
+      "current_generation": 0,
+      "assistant_transcript_changed": true
+    },
+    {
+      "id": "clean-immediate-handoff",
+      "expected_reconcile": false,
+      "elapsed_seconds": 0.1,
+      "checkpoint_generation": 1,
+      "current_generation": 1,
+      "assistant_transcript_changed": true
+    }
+  ]
+}

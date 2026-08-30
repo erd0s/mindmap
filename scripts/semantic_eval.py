@@ -12,7 +12,7 @@ from typing import Any
 
 VALID_STATES = {"planned", "open", "settled"}
 VALID_RESUME_EXPECTATIONS = {"empty", "nonempty", "closed"}
-SCORER_VERSION = 3
+SCORER_VERSION = 5
 
 
 @dataclass(frozen=True)
@@ -153,18 +153,31 @@ def _resume_satisfies(expectation: str, value: str) -> bool:
     if expectation == "nonempty":
         return bool(normalized)
     if expectation == "closed":
-        return not normalized or normalized.startswith(
-            (
-                "no ",
-                "none",
-                "nothing ",
-                "reopen ",
-                "complete",
-                "done",
-                "finished",
-                "resolved",
-                "settled",
-            )
+        if not normalized:
+            return True
+        clauses = [clause.strip() for clause in re.split(r"[.;]\s*", normalized) if clause.strip()]
+        action_start = re.compile(
+            r"^(?:add|build|choose|configure|create|debug|decide|define|deploy|"
+            r"document|finish|fix|implement|install|investigate|prepare|remove|"
+            r"replace|review|run|send|test|update|upgrade|validate|verify|write)\b"
+        )
+        if any(
+            action_start.search(clause)
+            and not re.search(r"\b(?:if|when|unless)\b", clause)
+            for clause in clauses
+        ):
+            return False
+        closed_start = (
+            "no ", "none", "nothing ", "reopen ", "complete", "closed",
+            "done", "finished", "fixed", "resolved", "settled",
+        )
+        subject_complete = re.compile(
+            r"^(?:feature|work|task|implementation|installation|fix|migration|"
+            r"review|capture|integration)\b.{0,80}\b(?:verified\s+)?complete\b"
+        )
+        return any(
+            clause.startswith(closed_start) or subject_complete.search(clause)
+            for clause in clauses
         )
     raise ValueError(f"unknown resume expectation {expectation!r}")
 

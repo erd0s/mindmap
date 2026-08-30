@@ -31,10 +31,112 @@ CHRONOLOGY_NODE_PATTERN = re.compile(
     r"^(?:message|msg|turn|prompt|response|chat|tool[-_ ]?call|event)[-_ ]*\d+\b",
     re.IGNORECASE,
 )
+ACTION_LIKE_RESUME_PATTERN = re.compile(
+    r"^(?:next\s*:\s*)?(?:continue\s+by\s+)?"
+    r"(?:add|build|choose|complete|configure|create|debug|decide|define|deploy|"
+    r"document|finish|fix|implement|install|investigate|prepare|remove|replace|"
+    r"review|run|send|test|update|upgrade|validate|verify|write)\b",
+    re.IGNORECASE,
+)
+CLOSED_OR_MAINTENANCE_RESUME_PATTERN = re.compile(
+    r"^(?:no\b|none\b|nothing\b|done\b|complete(?:d)?\b|resolved\b|settled\b|"
+    r"closed\b|reopen\b|monitor\b|maintain\b|keep\b|use\b|if\b|when\b|unless\b|"
+    r"only\b|as\s+needed\b)",
+    re.IGNORECASE,
+)
+EXPLICIT_CLOSURE_PATTERN = re.compile(
+    r"(?:^(?:the\s+|this\s+)?(?:local\s+)?"
+    r"(?:work|task|goal|project|installation|install|implementation|migration|review|"
+    r"analysis|assessment|investigation|setup|upgrade|fix|decision|capture|integration)"
+    r"\b[^.]{0,120}\b(?:is|are|was|were|has\s+been|have\s+been)\s+(?:now\s+)?"
+    r"(?:complete|completed|resolved|finished|closed|done)\b|"
+    r"^(?:complete|completed|resolved|finished|closed|done)\b|"
+    r"\bno\s+(?:further|remaining|more)\s+(?:work|action|changes?|follow[- ]?up)\b|"
+    r"\bnothing\s+remains\b)",
+    re.IGNORECASE,
+)
+SUPERSEDED_PATTERN = re.compile(
+    r"^(?:this|the)\s+(?:work|task|goal|project|plan|direction|approach|workflow|"
+    r"implementation|root|branch)\b[^.]{0,100}\b(?:is|was|has\s+been)\s+"
+    r"(?:superseded|replaced\s+by|abandoned|cancelled|canceled|"
+    r"no\s+longer\s+(?:needed|required|active|current))\b",
+    re.IGNORECASE,
+)
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+
+
+def semantic_warnings(
+    items: list[dict[str, Any]],
+    latest_item_updates: dict[str, dict[str, Any]],
+) -> list[dict[str, str]]:
+    """Return high-confidence, warning-only map inconsistencies."""
+    warnings: list[dict[str, str]] = []
+    for item in items:
+        item_id = str(item["id"])
+        state = str(item["state"])
+        summary = str(item.get("summary") or "").strip()
+        resume = str(item.get("resume") or "").strip()
+        if (
+            state == "settled"
+            and resume
+            and ACTION_LIKE_RESUME_PATTERN.search(resume)
+            and not CLOSED_OR_MAINTENANCE_RESUME_PATTERN.search(resume)
+            and not re.search(r"\b(?:if|when|unless)\b", resume, re.IGNORECASE)
+        ):
+            warnings.append({
+                "code": "settled_action_resume",
+                "item_id": item_id,
+                "message": (
+                    "Settled concept has an ordinary action-like resume. Clear it, "
+                    "replace it with completion/maintenance/conditional-reopen guidance, "
+                    "or reopen the concept."
+                ),
+            })
+        if state != "settled" and summary and EXPLICIT_CLOSURE_PATTERN.search(summary):
+            warnings.append({
+                "code": "state_summary_contradiction",
+                "item_id": item_id,
+                "message": (
+                    f"{state.title()} concept's summary explicitly describes completion. "
+                    "Verify the state or rewrite the contradictory summary."
+                ),
+            })
+        if (
+            state != "settled"
+            and item.get("parent_id") is None
+            and SUPERSEDED_PATTERN.search(" ".join((summary, resume)))
+        ):
+            warnings.append({
+                "code": "superseded_root_frontier",
+                "item_id": item_id,
+                "message": (
+                    "Unsettled root describes itself as superseded, replaced, abandoned, "
+                    "or no longer needed. Verify whether its frontier is stale."
+                ),
+            })
+        update = latest_item_updates.get(item_id)
+        operation = update.get("operation") if isinstance(update, dict) else None
+        if (
+            state != "settled"
+            and isinstance(update, dict)
+            and update.get("previous_state") == "settled"
+            and isinstance(operation, dict)
+            and operation.get("state") in {"open", "planned"}
+            and not str(operation.get("summary") or "").strip()
+            and not str(operation.get("resume") or "").strip()
+        ):
+            warnings.append({
+                "code": "reversion_without_context",
+                "item_id": item_id,
+                "message": (
+                    "Concept was reopened from settled without updating its summary or "
+                    "resume. Record the evidence and a usable frontier."
+                ),
+            })
+    return warnings
 
 
 class Store:
@@ -148,6 +250,10 @@ class Store:
                     checkpointed_at TEXT,
                     checkpoint_summary TEXT,
                     checkpoint_payload_hash TEXT,
+                    tool_activity_generation INTEGER NOT NULL DEFAULT 0,
+                    checkpoint_tool_activity_generation INTEGER,
+                    last_tool_name TEXT,
+                    last_tool_at TEXT,
                     last_assistant_message TEXT,
                     UNIQUE(session_pk, interaction_id)
                 );
@@ -229,6 +335,18 @@ class Store:
             }
             if "checkpoint_payload_hash" not in turn_columns:
                 connection.execute("ALTER TABLE turns ADD COLUMN checkpoint_payload_hash TEXT")
+            if "tool_activity_generation" not in turn_columns:
+                connection.execute(
+                    "ALTER TABLE turns ADD COLUMN tool_activity_generation INTEGER NOT NULL DEFAULT 0"
+                )
+            if "checkpoint_tool_activity_generation" not in turn_columns:
+                connection.execute(
+                    "ALTER TABLE turns ADD COLUMN checkpoint_tool_activity_generation INTEGER"
+                )
+            if "last_tool_name" not in turn_columns:
+                connection.execute("ALTER TABLE turns ADD COLUMN last_tool_name TEXT")
+            if "last_tool_at" not in turn_columns:
+                connection.execute("ALTER TABLE turns ADD COLUMN last_tool_at TEXT")
             project_columns = {
                 row["name"] for row in connection.execute("PRAGMA table_info(projects)")
             }
@@ -610,7 +728,9 @@ class Store:
                 connection.execute(
                     """
                     UPDATE turns SET checkpointed_at = NULL, checkpoint_summary = NULL,
-                      checkpoint_payload_hash = NULL, last_assistant_message = NULL
+                      checkpoint_payload_hash = NULL,
+                      checkpoint_tool_activity_generation = NULL,
+                      last_assistant_message = NULL
                     WHERE id = ?
                     """,
                     (turn["id"],),
@@ -629,6 +749,66 @@ class Store:
             return {
                 "new_prompt": new_prompt,
                 "checkpoint_invalidated": checkpoint_invalidated,
+            }
+
+    def note_tool_activity(
+        self,
+        project_id: int,
+        host: str,
+        session_id: str,
+        interaction_id: str | None,
+        tool_name: str,
+    ) -> dict[str, Any] | None:
+        """Advance the active turn's tool generation before a tool executes.
+
+        Claude does not currently attach a prompt id to PreToolUse, so its
+        active turn is resolved as the latest turn in the session. Codex's
+        turn_id is used directly when present.
+        """
+        now = utc_now()
+        with self.transaction() as connection:
+            session = connection.execute(
+                """
+                SELECT id FROM sessions
+                WHERE project_id = ? AND host = ? AND session_id = ?
+                """,
+                (project_id, host, session_id),
+            ).fetchone()
+            if not session:
+                return None
+            if interaction_id:
+                turn = connection.execute(
+                    """
+                    SELECT id, interaction_id, tool_activity_generation
+                    FROM turns
+                    WHERE session_pk = ? AND interaction_id = ?
+                    """,
+                    (session["id"], interaction_id),
+                ).fetchone()
+            else:
+                turn = connection.execute(
+                    """
+                    SELECT id, interaction_id, tool_activity_generation
+                    FROM turns
+                    WHERE session_pk = ?
+                    ORDER BY id DESC LIMIT 1
+                    """,
+                    (session["id"],),
+                ).fetchone()
+            if not turn:
+                return None
+            generation = int(turn["tool_activity_generation"] or 0) + 1
+            connection.execute(
+                """
+                UPDATE turns
+                SET tool_activity_generation = ?, last_tool_name = ?, last_tool_at = ?
+                WHERE id = ?
+                """,
+                (generation, tool_name[:200], now, turn["id"]),
+            )
+            return {
+                "interaction_id": turn["interaction_id"],
+                "tool_activity_generation": generation,
             }
 
     def turn_prompts(
@@ -826,6 +1006,43 @@ class Store:
             (session_pk,),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def prior_unresolved_checkpoint(
+        self, host: str, session_id: str, interaction_id: str
+    ) -> dict[str, Any] | None:
+        """Return the latest completed-output turn not covered by a later checkpoint."""
+        session = self.session(host, session_id)
+        if not session:
+            return None
+        with self.read_connection() as connection:
+            current = connection.execute(
+                """
+                SELECT id FROM turns
+                WHERE session_pk = ? AND interaction_id = ?
+                """,
+                (session["id"], interaction_id),
+            ).fetchone()
+            if not current:
+                return None
+            return self._row(connection.execute(
+                """
+                SELECT missing.interaction_id, missing.last_tool_name,
+                       missing.last_tool_at, missing.last_assistant_message
+                FROM turns missing
+                WHERE missing.session_pk = ? AND missing.id < ?
+                  AND missing.checkpointed_at IS NULL
+                  AND missing.last_assistant_message IS NOT NULL
+                  AND trim(missing.last_assistant_message) <> ''
+                  AND NOT EXISTS (
+                    SELECT 1 FROM turns recovered
+                    WHERE recovered.session_pk = missing.session_pk
+                      AND recovered.id > missing.id AND recovered.id < ?
+                      AND recovered.checkpointed_at IS NOT NULL
+                  )
+                ORDER BY missing.id DESC LIMIT 1
+                """,
+                (session["id"], current["id"], current["id"]),
+            ).fetchone())
 
     def _validate_operation(self, operation: dict[str, Any]) -> None:
         action = operation.get("op")
@@ -1234,12 +1451,14 @@ class Store:
                 """
                 INSERT INTO turns
                   (project_id, session_pk, interaction_id, prompt_excerpt, started_at,
-                   checkpointed_at, checkpoint_summary, checkpoint_payload_hash)
-                VALUES (?, ?, ?, '', ?, ?, ?, ?)
+                   checkpointed_at, checkpoint_summary, checkpoint_payload_hash,
+                   tool_activity_generation, checkpoint_tool_activity_generation)
+                VALUES (?, ?, ?, '', ?, ?, ?, ?, 0, 0)
                 ON CONFLICT(session_pk, interaction_id) DO UPDATE SET
                   checkpointed_at = excluded.checkpointed_at,
                   checkpoint_summary = excluded.checkpoint_summary,
-                  checkpoint_payload_hash = excluded.checkpoint_payload_hash
+                  checkpoint_payload_hash = excluded.checkpoint_payload_hash,
+                  checkpoint_tool_activity_generation = turns.tool_activity_generation
                 """,
                 (
                     project["id"], session["id"], interaction_id, now, now,
@@ -1301,7 +1520,8 @@ class Store:
             connection.execute(
                 """
                 UPDATE turns SET checkpointed_at = NULL, checkpoint_summary = NULL,
-                  checkpoint_payload_hash = NULL
+                  checkpoint_payload_hash = NULL,
+                  checkpoint_tool_activity_generation = NULL
                 WHERE id = ?
                 """,
                 (turn["id"],),
@@ -1357,13 +1577,40 @@ class Store:
     def project_snapshot(self, project_id: int) -> dict[str, Any]:
         with self.read_transaction() as connection:
             project, items = self._project_and_items(connection, project_id)
+            latest_item_updates: dict[str, dict[str, Any]] = {}
+            for row in connection.execute(
+                """
+                SELECT item_id, payload_json FROM events
+                WHERE project_id = ? AND event_type = 'item.updated'
+                ORDER BY id DESC
+                """,
+                (project_id,),
+            ):
+                item_id = row["item_id"]
+                if item_id and item_id not in latest_item_updates:
+                    try:
+                        payload = json.loads(row["payload_json"])
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+                    if isinstance(payload, dict):
+                        latest_item_updates[item_id] = payload
             sessions = [
                 dict(row)
                 for row in connection.execute(
                     """
                     SELECT host, session_id, started_at, last_seen_at, ended_at,
                            (SELECT count(*) FROM messages m WHERE m.session_pk = s.id) AS message_count,
-                           (SELECT count(*) FROM turns t WHERE t.session_pk = s.id AND t.checkpointed_at IS NOT NULL) AS turn_count
+                           (SELECT count(*) FROM turns t WHERE t.session_pk = s.id AND t.checkpointed_at IS NOT NULL) AS turn_count,
+                           (SELECT count(*) FROM turns t
+                            WHERE t.session_pk = s.id
+                              AND t.checkpointed_at IS NULL
+                              AND t.last_assistant_message IS NOT NULL
+                              AND trim(t.last_assistant_message) <> ''
+                              AND t.id > coalesce((
+                                SELECT max(done.id) FROM turns done
+                                WHERE done.session_pk = s.id
+                                  AND done.checkpointed_at IS NOT NULL
+                              ), 0)) AS unresolved_checkpoint_count
                     FROM sessions s WHERE project_id = ? ORDER BY last_seen_at DESC
                     """,
                     (project_id,),
@@ -1386,6 +1633,7 @@ class Store:
         return {
             "project": project,
             "items": items,
+            "semantic_warnings": semantic_warnings(items, latest_item_updates),
             "sessions": sessions,
             "events": events,
             "user_deleted_branches": user_deleted_branches,
@@ -1428,6 +1676,7 @@ class Store:
         project = snapshot["project"]
         items = snapshot["items"]
         user_deleted_branches = snapshot["user_deleted_branches"]
+        warnings = snapshot["semantic_warnings"]
         children: dict[str | None, list[dict[str, Any]]] = {}
         for item in items:
             children.setdefault(item["parent_id"], []).append(item)
@@ -1503,6 +1752,19 @@ class Store:
             stack.extend(
                 (child, depth + 1)
                 for child in reversed(children.get(item["id"], []))
+            )
+
+        if project["active"] and warnings:
+            lines.extend(
+                [
+                    "\nMINDMAP_SEMANTIC_WARNINGS_V1:",
+                    "These are warning-only consistency checks. Reconcile the cited "
+                    "concepts from conversation evidence; do not auto-settle causal parents.",
+                    *(
+                        f"- [{warning['code']}:{warning['item_id']}] {warning['message']}"
+                        for warning in warnings
+                    ),
+                ]
             )
 
         frontier = [

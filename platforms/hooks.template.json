@@ -15,6 +15,13 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/run_hook.sh\" --host __HOST__", "timeout": 3}
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

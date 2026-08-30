@@ -69,6 +69,10 @@ class SemanticEvaluationTests(unittest.TestCase):
             "Nothing remains. Reopen only for a later release.",
             "Resolved. No action needed.",
             "Done. Reopen if new evidence appears.",
+            "Closed. No remaining installation or refresh work.",
+            "Feature complete and verified by tests. No further work planned unless regressions surface.",
+            "Feature verified complete; no open work remains on this thread.",
+            "Fixed and verified: selection payload preserves all images.",
         ):
             with self.subTest(resume=resume):
                 actual = copy.deepcopy(fixture["reference_items"])
@@ -81,6 +85,10 @@ class SemanticEvaluationTests(unittest.TestCase):
         score = score_fixture(fixture, seed_items(fixture), unfinished)
         self.assertFalse(score.passed)
         self.assertTrue(any("resume should be closed" in problem for problem in score.problems))
+        mixed = copy.deepcopy(fixture["reference_items"])
+        mixed[0]["resume"] = "Install the release. No follow-up after that."
+        score = score_fixture(fixture, seed_items(fixture), mixed)
+        self.assertFalse(score.passed)
 
     def test_parent_matching_does_not_depend_on_fixture_order(self) -> None:
         fixture = load_fixture(FIXTURES / "stale-resume-reconciliation.json")
