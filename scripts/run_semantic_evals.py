@@ -442,6 +442,12 @@ def main() -> int:
         type=Path,
         help="Write the complete JSON report to this path while retaining console progress.",
     )
+    parser.add_argument(
+        "--show-finals",
+        choices=("failures", "all", "none"),
+        default="failures",
+        help="Print agent final answers; every answer is still retained in --output reports.",
+    )
     args = parser.parse_args()
     if args.runs < 1:
         parser.error("--runs must be at least 1")
@@ -531,7 +537,10 @@ def main() -> int:
                                     f"  {item['id']}: parent={item.get('parent_id')!r}, "
                                     f"state={item.get('state')}, resume={item.get('resume')!r}"
                                 )
-                        if result["final"]:
+                        show_final = args.show_finals == "all" or (
+                            args.show_finals == "failures" and not result["passed"]
+                        )
+                        if result["final"] and show_final:
                             print("Final:", result["final"])
         summary = summarize(results, hosts)
         report = {
