@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -37,7 +38,7 @@ def note_pre_tool_activity(host: str, payload: dict[str, Any]) -> None:
         interaction_id = None
     tool_name = str(payload.get("tool_name") or "unknown")[:200]
     now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-    with sqlite3.connect(database, timeout=10) as connection:
+    with closing(sqlite3.connect(database, timeout=10)) as connection, connection:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 10000")
         project_id = next(

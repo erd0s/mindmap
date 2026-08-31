@@ -27,7 +27,16 @@ def _emit(value: Any, human: str | None = None) -> None:
 
 
 def _payload(path: str) -> dict[str, Any]:
-    text = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
+    if path == "-":
+        if sys.stdin.isatty():
+            raise MindmapError(
+                "Record JSON on stdin requires a non-interactive pipe or heredoc; "
+                "interactive TTY input can truncate at 4096 bytes. Do not use "
+                "tty/write_stdin. Use a pipe, a heredoc, or --file PATH."
+            )
+        text = sys.stdin.read()
+    else:
+        text = Path(path).read_text(encoding="utf-8")
     value = json.loads(text)
     if not isinstance(value, dict):
         raise MindmapError("Record input must be a JSON object.")

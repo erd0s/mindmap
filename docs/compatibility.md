@@ -52,6 +52,12 @@ Hook inputs share `session_id`, `cwd`, `transcript_path`, and an event name. Cod
 
 The generation check detects work after a checkpoint without waiting for elapsed time. The record command's own `PreToolUse` happens before `record`, so the saved checkpoint includes that generation. Any later observed tool advances the generation and makes Stop request one reconciliation pass. The older 60-second check remains only for turns whose checkpoint generation is zero, which identifies an older hook package or direct record call.
 
+Record JSON travels through a non-interactive pipe or heredoc. The Python
+runtime rejects interactive terminal stdin because canonical pseudo-terminals
+can truncate an input line at 4096 bytes. End-of-turn side effects such as audio,
+clipboard writes, and notifications therefore run before the record command;
+only the final textual response follows it.
+
 Tool names differ in practice. In the Claude permission fixture, Claude used Serena's MCP shell executor when built-in `Bash` was denied. Mindmap counted that call because the hook does not assume that shell work always travels through `Bash`. The denial fixture therefore disables external MCP servers as well as built-in shell access; otherwise it tests alternate execution, not an unavailable record path.
 
 Claude's plugin updater treats an unchanged manifest version as already current,

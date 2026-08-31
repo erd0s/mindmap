@@ -45,6 +45,13 @@ Agent writes use WAL mode, a busy timeout, immediate transactions, deferred pare
 
 `PreToolUse` advances a turn's tool generation before each observed local or MCP tool. `record` saves the current generation with the checkpoint. Stop invalidates a checkpoint when the live generation is newer, which catches fast post-checkpoint work. A zero saved generation means the turn came from an older hook package or a direct command, so only those turns retain the 60-second fallback. Hosted tools and new commitments stated only in final prose remain observable gaps; the mechanism is a strong finality signal, not semantic proof.
 
+The agent supplies each record as JSON through a non-interactive pipe or
+heredoc. The record command rejects interactive terminal input because a
+canonical pseudo-terminal can truncate one line at 4096 bytes. This transport
+rule is separate from Mindmap's validated 100 KB record limit. Audio, clipboard
+writes, notifications, cleanup, and every other tool-side effect run before the
+record; the agent sends only its final textual response afterward.
+
 The fast activity hook performs one narrow SQLite update without importing the full lifecycle runtime or scanning the schema. On the development machine, 20 direct fast-hook processes took 0.84 seconds, compared with 1.24 seconds through the full lifecycle path. The portable shell launcher raised the measured total to 1.16 seconds for 20 calls. These figures are local benchmarks, not test thresholds.
 
 The display route is a stable, lowercased, percent-encoded form of the path beneath the user's home directory. It is an identity and command-line selector, not a URL. Case-folded collisions are rejected rather than merged.
@@ -56,7 +63,8 @@ The display route is a stable, lowercased, percent-encoded form of the path bene
 3. The host adapter supplies project, host, session, and interaction identity.
 4. The skill compresses the session into goals, branches, questions, decisions, plans, and resume points.
 5. A lightweight `PreToolUse` hook advances the active turn's generation before each observed tool; the record command snapshots that generation.
-6. Deterministic code validates and atomically records the update.
+6. Deterministic code rejects interactive terminal input, validates the complete
+   piped payload, and atomically records the update.
 7. The Stop hook requests one recovery pass when the current interaction has no checkpoint or has later observed tool activity, then fails open so Mindmap cannot trap the host session.
 8. If an unattended record attempt still fails, the next prompt identifies the prior unresolved interaction and tells the agent to reconcile it in the current checkpoint.
 9. Future local sessions read the same project map regardless of which supported host wrote it.

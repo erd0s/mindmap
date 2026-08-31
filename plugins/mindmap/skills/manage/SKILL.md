@@ -82,7 +82,9 @@ Capture plans the user or agent explicitly stated even when nobody has begun the
 
 ## Checkpoint every active turn
 
-After all substantive work and immediately before the final response of every active turn, use the exact injected record command. Do not checkpoint while implementation, commands, tests, research, or requested changes remain; make it the final substantive tool action. It accepts one JSON object on stdin:
+After all work and immediately before the final response of every active turn, use the exact injected record command. Make it the final tool action, not merely the final implementation action. Complete every side effect first, including audio, clipboard, notifications, cleanup, and status checks. If another instruction puts a side effect after the checkpoint, preserve the side effect but move it immediately before the record. After the record succeeds, send the final response without calling another tool.
+
+Supply the JSON through a non-interactive pipe or heredoc in the same tool call as the record command. Never start the command with a TTY or stream the JSON through interactive stdin or `write_stdin`: canonical terminals can truncate input at 4096 bytes. The record CLI rejects interactive TTY stdin. Use `--file PATH` only when a safe, task-scoped payload file already exists; do not create durable checkpoint scratch files. The command accepts one JSON object:
 
 ```json
 {

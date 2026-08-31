@@ -43,6 +43,17 @@ In a host that supports steering, checkpoint a turn and then add another user pr
 
 Next, let the record command run, execute another shell or edit tool immediately, and finish within one second. Expected: Stop reports `post_checkpoint_tool_activity` and requests one reconciliation pass. A long, clean final response after a generation-aware checkpoint must not reopen merely because sixty seconds passed. Also simulate an old zero-generation checkpoint more than 60 seconds before Stop. Expected: the legacy fallback still requests one reconciliation pass.
 
+Pipe a valid record payload larger than 4096 bytes through non-interactive stdin.
+Expected: it commits normally. Repeat by starting `record --file -` in an
+interactive pseudo-terminal. Expected: the command rejects the transport before
+reading JSON and directs the caller to use a pipe, heredoc, or payload file. It
+must not wait for an end-of-transmission character or partially change the map.
+
+In a session with an end-of-turn audio or notification instruction, run that
+side effect before the final record. Expected: Stop accepts the checkpoint
+without an empty corrective pass. Running the same tool after the record must
+still trigger `post_checkpoint_tool_activity`.
+
 Grow the fixture beyond 24 meaningful sibling concepts across several turns. Expected: the map accepts them. A single checkpoint with 21 new concepts, a fifth independent root, a branch deeper than ten levels, and a numbered turn/message node must still fail independently.
 
 Start a separate session outside the project and invoke start. Expected: activation is blocked for that session rather than silently retargeted through a tool workdir.
