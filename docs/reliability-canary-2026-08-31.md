@@ -121,6 +121,14 @@ greater-than-4-KiB non-interactive payload completely. The Go CLI hashes remain
 unchanged because this revision changes the bundled Python agent runtime and
 guidance, not the management CLI.
 
+The installation inventory also found two pre-fix `mindmap.py record --file -`
+helpers still asleep on interactive stdin: the vault-system attempt described
+above on DirkOS and an older blender-cheatsheet attempt on the MacBook. Neither
+had parsed a payload or opened a record transaction. Their exact helper
+processes were terminated after parent and state verification; the Codex
+sessions remained running. Immediate TTY rejection prevents this stranded
+process pattern in the revised package.
+
 Fresh online backups were taken before installation and passed
 `PRAGMA integrity_check`:
 
