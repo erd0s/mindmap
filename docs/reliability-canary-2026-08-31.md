@@ -21,6 +21,61 @@ followed by install. The SQLite data was not removed or rewritten. The source
 setup command is being corrected so a future forced Claude refresh performs
 that preservation/reinstall sequence automatically.
 
+## Pinned cross-machine installation
+
+On 31 August the complete candidate, including the corrected same-version
+Claude refresh, was pinned at
+`fecbcce50c0e1f8b5943c6616165ff649764f98d`. It is installed from persistent,
+detached worktrees rather than from a mutable branch or public release:
+
+| Machine | Pinned worktree | CLI SHA-256 |
+|---|---|---|
+| DirkOS | `/home/dirk/Dev/mindmap-canary-fecbcce` | `7a53cf8320a5ae513f51c82741221ff5e8a0a8809f4ed0ba79a5e7f6809ec9e3` |
+| MacBook | `/Users/dirk/Dev/mindmap-canary-fecbcce` | `2289331577af742355206abb5c7aad7e29e094e05e9ebda465d690def29bded9` |
+
+Both CLIs report version 0.3.0 because the plugin manifests and compatibility
+checks use the public semantic version. The full commit and binary digests above
+are the canary provenance; a canary suffix on only the CLI made the correct
+0.3.0 plugins appear stale, so it was not retained.
+
+Before changing either installation, SQLite's online backup command produced a
+machine-local rollback copy and both copies passed `PRAGMA integrity_check`:
+
+| Machine | Backup | Backup SHA-256 | Snapshot boundary |
+|---|---|---|---|
+| DirkOS | `/home/dirk/.local/share/mindmap/mindmap-before-fecbcce.sqlite3` | `9698b007bd43aebadefbb549cb4c4f34f6b2b1bf8858fc6906c187aabc2cb543` | `2026-08-31T13:56:12Z`; turn 595; event 1605 |
+| MacBook | `/Users/dirk/.local/share/mindmap/mindmap-before-fecbcce.sqlite3` | `9d170b3ed3e5ada116623fd73097c9d14d9469d93e8598fbe3248bd87360cb19` | `2026-08-31T13:56:50Z`; turn 28; event 109 |
+
+The DirkOS review must continue to use the original canary boundary below,
+`turns.id > 506` and `events.id > 1487`; the later backup boundary is rollback
+provenance, not a reset of the sample. MacBook observations begin at
+`turns.id > 28` and `events.id > 109`. At backup time DirkOS had 529 turns with
+completed output and 565 checkpointed turns; the MacBook had 27 and 28
+respectively.
+
+The generated Codex package and generated Claude package each compare exactly
+with their corresponding installed cache on both machines. Both marketplaces
+now use the pinned local worktree, both integrations report Mindmap 0.3.0
+installed, and `mindmap doctor` passes for the database, supported Python,
+Codex, and Claude. On macOS it also finds the desktop application. The existing
+Mindmap.app remains the public 0.3.0 notarized Developer ID build; `codesign`
+verification and Gatekeeper assessment both pass. It was deliberately not
+replaced because this canary changes the agent runtime and setup CLI, not the
+compatible database viewer.
+
+Package generation and validation passed on both machines. The Go CLI tests
+passed normally on DirkOS. On macOS one filesystem-boundary test initially used
+Go's default `/private/var/folders` temporary directory, which lies outside the
+real user home that the production route correctly requires. Re-running the
+unchanged candidate with `TMPDIR=/Users/dirk/.cache/mindmap-go-test-tmp` passed;
+this is a test-harness portability issue, not a product bypass.
+
+Agent hosts read plugin and hook configuration at process startup. Existing
+Codex processes were left running to avoid interrupting work, so sessions that
+predate this installation can retain the package they started with. New Codex
+and Claude sessions on both machines are authoritative canary sessions. Restart
+an older session before treating its observations as candidate evidence.
+
 ## Boundary
 
 | Field | Baseline |
