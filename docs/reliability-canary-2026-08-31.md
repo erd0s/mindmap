@@ -4,10 +4,11 @@
 
 The canary runtime is the generated plugin package from implementation commit
 `287f53172455`. Commit `c19acbc` only updates the retained evaluation document.
-Both Codex and Claude were refreshed after the clean semantic run. The critical
-installed files—hook manifest, hook adapter, activity module, lifecycle module,
-and store module—were compared byte-for-byte with the generated packages and
-matched on both hosts.
+Commit `fecbcce` corrects the same-version Claude setup refresh used by the
+pinned installation below. Both Codex and Claude were refreshed after the clean
+semantic run. The critical installed files—hook manifest, hook adapter, activity
+module, lifecycle module, and store module—were compared byte-for-byte with the
+generated packages and matched on both hosts.
 
 | Host package tree | SHA-256 |
 |---|---|
@@ -18,8 +19,8 @@ Codex's marketplace refresh removed and reinstalled the plugin. Claude's normal
 same-version update reported that 0.3.0 was current but left the old cache in
 place. The canary therefore used Claude's supported uninstall with `--keep-data`
 followed by install. The SQLite data was not removed or rewritten. The source
-setup command is being corrected so a future forced Claude refresh performs
-that preservation/reinstall sequence automatically.
+setup command was corrected in `fecbcce` so a future forced Claude refresh
+performs that preservation/reinstall sequence automatically.
 
 ## Pinned cross-machine installation
 
