@@ -9,7 +9,7 @@
       "name": "mindmap",
       "source": "./plugins/claude/mindmap",
       "description": "A small causal concept tree distilled from coding-agent sessions.",
-      "version": "0.3.0"
+      "version": "0.3.1"
     }
   ]
 }
