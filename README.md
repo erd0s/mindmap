@@ -20,6 +20,11 @@ Each node is a meaningful concept, not a message or activity-log entry:
 
 ## Install
 
+When upgrading an existing agent integration, finish or checkpoint active local
+work and fully quit Codex and Claude CLI or desktop processes before running the
+installer. Setup may replace the cached plugin path used by a running process.
+Begin new agent sessions after installation.
+
 ### macOS desktop
 
 Download `mindmap_macos_universal.dmg` from the [latest release](https://github.com/erd0s/mindmap/releases/latest), open it, and drag **Mindmap** to Applications.

@@ -131,6 +131,14 @@ detects this local-to-public transition and generates the safe replacement and
 reinstallation sequence automatically. Unit, full validation, race, vet, and
 isolated real-host dry-run checks pass for that change.
 
+Removing the registered 0.3.0 plugins also removed the Codex cache path still
+loaded by the installation session. The unregistered 0.3.0 Codex and Claude
+cache trees were restored byte-for-byte from the pinned canary worktrees on
+both machines so old sessions can finish safely; 0.3.1 remains the registered
+default. The installation guide now requires active agent processes to finish
+or checkpoint and quit before an upgrade. Remove the compatibility cache trees
+only after every old process has ended.
+
 ## Remaining qualification
 
 Do not create the follow-up release tag until these checks are complete or Dirk
@@ -145,9 +153,10 @@ plugin, including the installation session, is excluded from the new sample.
 
 1. Finish or safely pause existing work, then fully restart every Codex and
    Claude CLI and desktop process on both machines. After the restarts, record
-   new database boundaries and the public-package canary start time. Collect 50
-   fresh DirkOS turns with completed output, representative fresh MacBook
-   traffic, one week of elapsed time, and the final failure and semantic audit.
+   new database boundaries and the public-package canary start time, then remove
+   the restored 0.3.0 compatibility caches. Collect 50 fresh DirkOS turns with
+   completed output, representative fresh MacBook traffic, one week of elapsed
+   time, and the final failure and semantic audit.
 2. Have an independent reader complete the blinded ten-second cold read and
    record whether they identify the root intent, settled work, active frontier,
    and next step.
