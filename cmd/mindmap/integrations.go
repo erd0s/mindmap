@@ -27,6 +27,7 @@ type integrationStatus struct {
 	Current                bool   `json:"current"`
 	Legacy                 bool   `json:"legacy"`
 	LegacyMarketplaceOwned bool   `json:"-"`
+	LocalMarketplace       bool   `json:"-"`
 	Version                string `json:"version,omitempty"`
 	PluginID               string `json:"plugin_id,omitempty"`
 	CheckFailed            bool   `json:"-"`
@@ -65,11 +66,23 @@ func inspectIntegration(host string) integrationStatus {
 		return status
 	}
 	parsed.Available = true
-	if parsed.Legacy && host == "codex" {
+	if parsed.Installed || parsed.Legacy {
 		marketplaceOutput, marketplaceErr := exec.CommandContext(ctx, path, "plugin", "marketplace", "list", "--json").CombinedOutput()
-		if marketplaceErr == nil {
+		if marketplaceErr != nil {
+			parsed.CheckFailed = true
+			parsed.Detail = "marketplace check failed" + outputSuffix(strings.TrimSpace(string(marketplaceOutput)))
+			return parsed
+		}
+		if parsed.Legacy && host == "codex" {
 			parsed.LegacyMarketplaceOwned = legacyMarketplaceIsMindmap(marketplaceOutput)
 		}
+		local, parseErr := mindmapMarketplaceIsLocal(host, marketplaceOutput)
+		if parseErr != nil {
+			parsed.CheckFailed = true
+			parsed.Detail = "unrecognized marketplace-list response: " + parseErr.Error()
+			return parsed
+		}
+		parsed.LocalMarketplace = local
 	}
 	return parsed
 }
@@ -153,6 +166,44 @@ func legacyMarketplaceIsMindmap(output []byte) bool {
 	return false
 }
 
+func mindmapMarketplaceIsLocal(host string, output []byte) (bool, error) {
+	switch host {
+	case "codex":
+		var payload struct {
+			Marketplaces []struct {
+				Name   string `json:"name"`
+				Source struct {
+					Type string `json:"sourceType"`
+				} `json:"marketplaceSource"`
+			} `json:"marketplaces"`
+		}
+		if err := json.Unmarshal(output, &payload); err != nil {
+			return false, err
+		}
+		for _, marketplace := range payload.Marketplaces {
+			if marketplace.Name == marketplaceName {
+				return strings.EqualFold(marketplace.Source.Type, "local"), nil
+			}
+		}
+	case "claude":
+		var payload []struct {
+			Name   string `json:"name"`
+			Source string `json:"source"`
+		}
+		if err := json.Unmarshal(output, &payload); err != nil {
+			return false, err
+		}
+		for _, marketplace := range payload {
+			if marketplace.Name == marketplaceName {
+				return strings.EqualFold(marketplace.Source, "directory"), nil
+			}
+		}
+	default:
+		return false, fmt.Errorf("unsupported host %q", host)
+	}
+	return false, nil
+}
+
 func showIntegrations(arguments []string) error {
 	flags := flag.NewFlagSet("mindmap integrations", flag.ContinueOnError)
 	jsonOutput := flags.Bool("json", false, "emit JSON")
@@ -171,7 +222,9 @@ func showIntegrations(arguments []string) error {
 		if status.Available {
 			state = "ready to set up"
 		}
-		if status.Current && !status.Legacy {
+		if status.CheckFailed {
+			state = "check failed"
+		} else if status.Current && !status.Legacy {
 			state = "installed"
 		} else if status.Installed || status.Legacy {
 			state = "needs update"
@@ -287,6 +340,26 @@ func integrationSetupCommands(host, source string, status integrationStatus, ref
 		commands = append(commands, []string{"plugin", "remove", "mindmap@personal"})
 		commands = append(commands, []string{"plugin", "marketplace", "remove", "personal"})
 	}
+	if status.Installed && status.LocalMarketplace {
+		if host == "codex" {
+			commands = append(commands,
+				[]string{"plugin", "remove", "mindmap@" + marketplaceName},
+				[]string{"plugin", "marketplace", "remove", marketplaceName},
+			)
+		} else {
+			commands = append(commands,
+				[]string{"plugin", "uninstall", "mindmap@" + marketplaceName, "--scope", "user", "--keep-data", "--yes"},
+				[]string{"plugin", "marketplace", "remove", marketplaceName, "--scope", "user"},
+			)
+		}
+		commands = append(commands, []string{"plugin", "marketplace", "add", source})
+		if host == "codex" {
+			commands = append(commands, []string{"plugin", "add", "mindmap@" + marketplaceName})
+		} else {
+			commands = append(commands, []string{"plugin", "install", "mindmap@" + marketplaceName, "--scope", "user", "--yes"})
+		}
+		return commands, nil
+	}
 	if status.Installed {
 		if host == "codex" {
 			commands = append(commands,
@@ -370,7 +443,7 @@ func doctor(arguments []string) error {
 	checks = append(checks, check{"python", pythonState, pythonDetail})
 	for _, integration := range integrationStatuses() {
 		state := "warn"
-		if integration.Installed {
+		if integration.Installed && !integration.CheckFailed {
 			state = "ok"
 		}
 		checks = append(checks, check{integration.Host, state, integration.Detail})

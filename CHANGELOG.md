@@ -2,6 +2,11 @@
 
 All notable changes appear here. Mindmap follows semantic versioning while the public interfaces settle before 1.0.
 
+## Unreleased
+
+- Replace an installed local Mindmap marketplace with the requested public
+  source before upgrading Codex or Claude Code, preserving Claude plugin data.
+
 ## 0.3.1 — 2026-09-02
 
 - Invalidate premature checkpoints when later observed tool activity makes them stale, including fast post-checkpoint work.

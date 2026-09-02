@@ -136,6 +136,34 @@ func TestLegacyMarketplaceRemovalRequiresMindmapSource(t *testing.T) {
 	}
 }
 
+func TestMindmapLocalMarketplaceDetection(t *testing.T) {
+	codexLocal := []byte(`{"marketplaces":[{"name":"erd0s-mindmap","marketplaceSource":{"sourceType":"local","source":"/tmp/mindmap"}}]}`)
+	codexGit := []byte(`{"marketplaces":[{"name":"erd0s-mindmap","marketplaceSource":{"sourceType":"git","source":"https://github.com/erd0s/mindmap.git"}}]}`)
+	claudeLocal := []byte(`[{"name":"erd0s-mindmap","source":"directory","path":"/tmp/mindmap"}]`)
+	claudeGit := []byte(`[{"name":"erd0s-mindmap","source":"github","repo":"erd0s/mindmap"}]`)
+
+	for _, test := range []struct {
+		name, host string
+		payload    []byte
+		want       bool
+	}{
+		{"codex local", "codex", codexLocal, true},
+		{"codex git", "codex", codexGit, false},
+		{"claude local", "claude", claudeLocal, true},
+		{"claude git", "claude", claudeGit, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := mindmapMarketplaceIsLocal(test.host, test.payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != test.want {
+				t.Fatalf("local = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestLegacyMigrationRefusesUnverifiedPersonalMarketplace(t *testing.T) {
 	_, err := integrationSetupCommands("codex", marketplaceSource, integrationStatus{Legacy: true}, false)
 	if err == nil || !strings.Contains(err.Error(), "refusing to remove mindmap@personal") {
@@ -190,6 +218,44 @@ func TestClaudeOrdinaryUpgradeUsesUpdate(t *testing.T) {
 	want := [][]string{
 		{"plugin", "marketplace", "update", marketplaceName},
 		{"plugin", "update", "mindmap@" + marketplaceName, "--scope", "user", "--yes"},
+	}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands = %#v, want %#v", commands, want)
+	}
+}
+
+func TestCodexLocalMarketplaceIsReplacedBeforePublicInstall(t *testing.T) {
+	commands, err := integrationSetupCommands("codex", marketplaceSource, integrationStatus{
+		Installed:        true,
+		LocalMarketplace: true,
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{
+		{"plugin", "remove", "mindmap@" + marketplaceName},
+		{"plugin", "marketplace", "remove", marketplaceName},
+		{"plugin", "marketplace", "add", marketplaceSource},
+		{"plugin", "add", "mindmap@" + marketplaceName},
+	}
+	if !reflect.DeepEqual(commands, want) {
+		t.Fatalf("commands = %#v, want %#v", commands, want)
+	}
+}
+
+func TestClaudeLocalMarketplaceIsReplacedAndDataIsPreserved(t *testing.T) {
+	commands, err := integrationSetupCommands("claude", marketplaceSource, integrationStatus{
+		Installed:        true,
+		LocalMarketplace: true,
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{
+		{"plugin", "uninstall", "mindmap@" + marketplaceName, "--scope", "user", "--keep-data", "--yes"},
+		{"plugin", "marketplace", "remove", marketplaceName, "--scope", "user"},
+		{"plugin", "marketplace", "add", marketplaceSource},
+		{"plugin", "install", "mindmap@" + marketplaceName, "--scope", "user", "--yes"},
 	}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("commands = %#v, want %#v", commands, want)

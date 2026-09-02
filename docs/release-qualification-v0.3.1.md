@@ -112,23 +112,42 @@ The real Mindmap databases and pinned canary installations were not changed.
 - The same tagged installer installed the checksum-matching Darwin ARM64 binary
   on the MacBook. Version, start, status, `TERM=dumb` ASCII rendering, stop, and
   paused status passed. The temporary profile was removed afterward.
+- On 2 September, the public v0.3.1 terminal binary and both public plugins were
+  installed for normal use on DirkOS and the MacBook. Both binaries matched the
+  release checksums, and both installed plugin trees matched their published
+  archives. Both live databases retained their contents and passed integrity
+  checks.
+- The signed v0.3.1 desktop application replaced v0.3.0 in the MacBook's
+  Applications directory. The installed application passed checksum,
+  signature, stapling, Gatekeeper, version, and universal-architecture checks.
+  It was not launched against Dirk's daily database during installation.
+
+The normal installer first replaced each terminal binary, but integration setup
+could not upgrade the pinned local canary marketplaces as Git marketplaces. It
+left both 0.3.0 plugins intact and printed a repair instruction. The local
+marketplaces were then removed by name, Claude plugin data was preserved, and
+setup installed both public 0.3.1 plugins on both machines. The follow-up code
+detects this local-to-public transition and generates the safe replacement and
+reinstallation sequence automatically. Unit, full validation, race, vet, and
+isolated real-host dry-run checks pass for that change.
 
 ## Remaining qualification
 
 Do not create the follow-up release tag until these checks are complete or Dirk
 explicitly waives them:
 
-At the 2 September 2026, 11:47 BST census, fresh post-candidate DirkOS
-sessions had 52 turns with completed output; all 52 were checkpointed. The
-MacBook had two post-boundary completed turns, both from a session that predates
-the revised candidate, so they do not satisfy the fresh-session sample. This is
-a progress count, not the final semantic or failure audit.
+The 2 September, 11:47 BST census closed the pinned `689b1f3` phase with 52
+completed-output turns from fresh DirkOS sessions; all 52 were checkpointed.
+The later public v0.3.1 installation replaced that candidate on both machines.
+Those results remain evidence for the shared hook implementation, but they do
+not complete the public-package canary. Every agent process that loaded the old
+plugin, including the installation session, is excluded from the new sample.
 
-1. Complete the revised cross-machine canary. The DirkOS turn-volume threshold
-   is met, but the time gate does not open until 7 September 2026 at 15:58:47
-   BST. A representative fresh-session MacBook sample, confirmation that every
-   pre-candidate agent session was restarted, and the final failure and semantic
-   audit also remain.
+1. Finish or safely pause existing work, then fully restart every Codex and
+   Claude CLI and desktop process on both machines. After the restarts, record
+   new database boundaries and the public-package canary start time. Collect 50
+   fresh DirkOS turns with completed output, representative fresh MacBook
+   traffic, one week of elapsed time, and the final failure and semantic audit.
 2. Have an independent reader complete the blinded ten-second cold read and
    record whether they identify the root intent, settled work, active frontier,
    and next step.
