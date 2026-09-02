@@ -118,10 +118,17 @@ The real Mindmap databases and pinned canary installations were not changed.
 Do not create the follow-up release tag until these checks are complete or Dirk
 explicitly waives them:
 
-1. Complete the revised cross-machine canary. The earliest eligible review is
-   7 September 2026 at 15:58:47 BST. It also requires at least 50 post-boundary
-   DirkOS turns with completed output, a representative MacBook sample, and the
-   restart of every agent session that predates candidate `689b1f3`.
+At the 2 September 2026, 11:47 BST census, fresh post-candidate DirkOS
+sessions had 52 turns with completed output; all 52 were checkpointed. The
+MacBook had two post-boundary completed turns, both from a session that predates
+the revised candidate, so they do not satisfy the fresh-session sample. This is
+a progress count, not the final semantic or failure audit.
+
+1. Complete the revised cross-machine canary. The DirkOS turn-volume threshold
+   is met, but the time gate does not open until 7 September 2026 at 15:58:47
+   BST. A representative fresh-session MacBook sample, confirmation that every
+   pre-candidate agent session was restarted, and the final failure and semantic
+   audit also remain.
 2. Have an independent reader complete the blinded ten-second cold read and
    record whether they identify the root intent, settled work, active frontier,
    and next step.
