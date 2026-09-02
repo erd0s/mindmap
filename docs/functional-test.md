@@ -146,6 +146,12 @@ Expected: the map stays viewable, the project is marked paused, and hooks inject
 
 ## 9. Release evidence
 
+Keep one release-specific qualification record while this runbook is in
+progress. Separate completed evidence from waived or unavailable checks so a
+later release decision does not mistake partial coverage for a pass. See the
+[v0.3.1 qualification record](release-qualification-v0.3.1.md) for the current
+format.
+
 Before publishing, retain:
 
 - `make validate` output
