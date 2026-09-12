@@ -1,15 +1,13 @@
 module github.com/erd0s/mindmap
 
-go 1.25.0
-
-toolchain go1.25.13
+go 1.26.0
 
 require (
 	charm.land/bubbletea/v2 v2.0.8
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/charmbracelet/x/term v0.2.2
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.48.0
 	golang.org/x/text v0.39.0
 	modernc.org/sqlite v1.56.0
 )
