@@ -295,12 +295,27 @@ without package, host, model, result, or scorer labels. The independent review,
 production canary of at least 50 completed turns and one week, and repeated CASS
 audit remain.
 
-The two resume-state fixtures were run three times
-per host with the same models and scorer: Codex 6/6 and Claude 5/6, with every
-trial executed and checkpointed. The single miss is the known Claude redundant
-symptom-child behaviour beside an otherwise correct transition. See
-`docs/resume-state-investigation.md` for the run record.
-See `docs/reliability-evaluation-results-2026-08-31.md` for the exact run record.
+Historical results for the two resume-state fixtures come from three trials
+per host on a dirty working tree, rescored offline with scorer v5: Codex 6/6
+and Claude 5/6, with every trial executed and checkpointed. The single miss is
+the known Claude redundant symptom-child behaviour beside an otherwise correct
+transition.
+
+A fresh Codex-only pass on clean source `2924390`, the reviewed generated
+package, the final redacted fixtures and unchanged scorer v5 passed 6/6 trials
+and 9/9 steps, all checkpointed. It used Codex CLI 0.154.0 and `gpt-5.6-sol`,
+three trials per fixture, temporary projects/maps/plugin installation and no
+retries. Fixtures, expectations, scorer and package were unchanged during the
+run. Claude has not been rerun; its 5/6 result remains historical.
+
+The full historical/fresh reports are not comparable because host coverage and
+the handoff fixture digest differ. The matching Codex planned-parent subset
+remains 3/3 with no metric regression, subject to the dirty historical package
+and offline-rescoring limitations. This small sample is bounded acceptance
+evidence, not the broader repeated reliability study specified above. See
+`docs/resume-state-investigation.md` for these results and their limits, and
+`docs/reliability-evaluation-results-2026-08-31.md` for the earlier five-fixture
+controlled comparison.
 
 ## Commands
 

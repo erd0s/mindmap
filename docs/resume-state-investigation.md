@@ -2,7 +2,7 @@
 
 This investigation addresses #17 and the duplicate #22. It distinguishes stale resume guidance from expected tracking limits, and adds bounded corrections and regression coverage. The cases below retain the technical failure, evidence type and expected outcome. Private project identities, map identifiers, session records and detailed chronology are omitted.
 
-The original investigation checked the cases against installed v0.3.1 and existing fixes. All five remained stale at that check. Production maps were not rewritten, and the changes described here have not been released or installed.
+The original investigation checked the cases against installed v0.3.1 and existing fixes. All five remained stale at that check. Production maps were not rewritten, and the changes described here have not been released or installed for normal use.
 
 ## Resume-state cases
 
@@ -41,8 +41,12 @@ Claude Code probes against 2.1.268 observed `CLAUDE_CODE_ENTRYPOINT=sdk-cli` in 
 
 Two semantic fixtures cover the reconciliation behavior: `planned-parent-transition` starts a validation phase while preserving later work; `handoff-completion-reconciliation` records a partial return before settling a completed handoff while preserving the source project's unfinished work.
 
-The retained live evaluation ran three trials per fixture and host, using Codex `gpt-5.6-sol`, Claude `sonnet` and scorer v5. Rescoring gives Codex 6/6 and Claude 5/6, with all 12 trials executed and checkpointed. The Claude miss added a redundant settled child despite the expected state and resume transitions.
+The historical live evaluation ran three trials per fixture and host on a dirty working tree, using Codex `gpt-5.6-sol` and Claude `sonnet`. Offline rescoring with scorer v5 gives Codex 6/6 and Claude 5/6, with all 12 trials executed and checkpointed. The Claude miss added a redundant settled child despite the expected state and resume transitions.
 
-Two fixture expectations were revised after inspecting retained graphs: the partial-return prompt made an unmet delivery dependency explicit, and the completion step allowed a refreshed summary on a still-open concept. The graphs were rescored rather than rerun. Subsequent warning and attached-session corrections were tested deterministically. Fixture commit identifiers and test timestamps were also replaced with synthetic values for public delivery, preserving their format and timing relationships. Retained results do not establish a fresh live evaluation of the final package or the redacted, revised prompts. Detailed evidence remains outside the public repository.
+Two fixture details were revised after inspecting retained graphs: the partial-return prompt made an unmet delivery dependency explicit, and the completion step allowed a refreshed summary on a still-open concept. Those graphs were rescored without new model calls. Subsequent warning and attached-session corrections were tested deterministically. Fixture commit identifiers and test timestamps were also replaced with synthetic values for public delivery, preserving their format and timing relationships.
+
+A fresh isolated Codex evaluation then used clean source `2924390`, the reviewed generated package, the final redacted fixtures and unchanged scorer v5. Codex CLI 0.154.0 with `gpt-5.6-sol` passed three trials per fixture: **6/6 trials and 9/9 steps**, each with a new checkpoint. All nine sessions ran sequentially without retries or changes to fixtures, expectations, scorer or package. Temporary projects, maps and a temporary plugin installation kept the run separate from normal use.
+
+The full historical and fresh reports are not a controlled before/after comparison: the historical package was dirty and its graphs were rescored offline, host coverage differs, and the handoff fixture digest changed. The matching Codex planned-parent subset passes the existing comparison checks, with 3/3 trials on each side and no metric regression; the historical provenance limits still apply. The Claude evaluation has not been rerun; its historical 5/6 result includes the known miss. This small Codex-only sample does not establish broader reliability or a fresh Claude result. Detailed evidence remains outside the public repository.
 
 The changes provide source-level corrections and guidance. They do not repair existing production maps, deploy integrations or guarantee semantic reconciliation in every agent run. Installation and source-root reconciliation remain separate delivery steps.
