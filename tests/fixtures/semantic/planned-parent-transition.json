@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "id": "planned-parent-transition",
+  "description": "A later live-session result proves that planned validation has begun and that the access setup is complete; the parent, siblings, and root resume must move while the broader outcomes stay open or planned.",
+  "project_files": [],
+  "seed_operations": [
+    {
+      "op": "upsert",
+      "id": "booking-pilot",
+      "title": "Run the booking pilot with the first partner site",
+      "summary": "Turn the internal booking prototype into a pilot that one partner site uses for real bookings.",
+      "resume": "Start with the partner's first live session and use its findings to choose the next branch.",
+      "state": "open",
+      "kind": "goal",
+      "parent_id": null
+    },
+    {
+      "op": "upsert",
+      "id": "partner-access-setup",
+      "title": "Get the partner account onto the staging site",
+      "summary": "The partner needs a working account and access before any live session can happen.",
+      "resume": "Send the partner the invitation and resolve the pending access request before the first live session.",
+      "state": "open",
+      "kind": "task",
+      "parent_id": "booking-pilot"
+    },
+    {
+      "op": "upsert",
+      "id": "staging-validation",
+      "title": "Validate the staging environment under real use",
+      "summary": "Saves, reconnects, and concurrent bookings need a real session on staging rather than local checks.",
+      "resume": "After the first live session, check save and reload behaviour on staging and rerun the acceptance suite.",
+      "state": "planned",
+      "kind": "task",
+      "parent_id": "booking-pilot"
+    },
+    {
+      "op": "upsert",
+      "id": "live-sessions",
+      "title": "Run live sessions with the partner",
+      "summary": "The live sessions test whether the booking flow is understandable and where it breaks for real staff.",
+      "resume": "Run the full booking flow with the partner and note confusion, slow steps, and failures before expanding scope.",
+      "state": "planned",
+      "kind": "task",
+      "parent_id": "booking-pilot"
+    },
+    {
+      "op": "upsert",
+      "id": "release-preparation",
+      "title": "Prepare the public release",
+      "summary": "After the pilot findings and staging risks are addressed, prepare the listing, metadata, and rollout plan.",
+      "resume": "Begin only after the live-session findings and staging risks are addressed.",
+      "state": "planned",
+      "kind": "task",
+      "parent_id": "staging-validation"
+    }
+  ],
+  "prompt": "Update the active Mindmap from today's work. We held the first live session with the partner on staging this afternoon: their account and access worked, so that setup is done. During the session, cancelling a booking removed the wrong booking and the confirmation email never arrived. Record that as a release-blocking bug under the staging validation. More live sessions are planned for next week, and the pilot is not finished. Keep release preparation exactly as it is.",
+  "expected": {
+    "nodes": [
+      {
+        "key": "pilot",
+        "selector": {"id": "booking-pilot"},
+        "state": "open",
+        "root": true,
+        "resume": "nonempty",
+        "resume_forbidden_terms": ["Start with the partner's first live session"]
+      },
+      {
+        "key": "access",
+        "selector": {"id": "partner-access-setup"},
+        "from_state": "open",
+        "state": "settled",
+        "parent_key": "pilot",
+        "resume": "closed",
+        "resume_forbidden_terms": ["pending access request"]
+      },
+      {
+        "key": "staging",
+        "selector": {"id": "staging-validation"},
+        "from_state": "planned",
+        "state": "open",
+        "parent_key": "pilot",
+        "resume": "nonempty",
+        "resume_forbidden_terms": ["After the first live session"]
+      },
+      {
+        "key": "sessions",
+        "selector": {"id": "live-sessions"},
+        "from_state": "planned",
+        "state": "open",
+        "parent_key": "pilot",
+        "resume": "nonempty"
+      },
+      {
+        "key": "bug",
+        "selector": {"all_terms": ["wrong booking"]},
+        "state": "open",
+        "parent_keys": ["staging"],
+        "resume": "nonempty"
+      },
+      {
+        "key": "release",
+        "selector": {"id": "release-preparation"},
+        "state": "planned",
+        "parent_key": "staging"
+      }
+    ],
+    "unchanged_ids": ["release-preparation"],
+    "max_new_nodes": 1,
+    "forbidden_title_patterns": ["^(message|turn|prompt|tool)[-_ ]?\\d+"]
+  },
+  "reference_items": [
+    {
+      "id": "booking-pilot",
+      "parent_id": null,
+      "title": "Run the booking pilot with the first partner site",
+      "summary": "Turn the internal booking prototype into a pilot that one partner site uses for real bookings. The first live session has been held on staging.",
+      "resume": "Fix the cancellation bug found in the first live session, then continue with next week's sessions.",
+      "state": "open",
+      "kind": "goal",
+      "revision": 2
+    },
+    {
+      "id": "partner-access-setup",
+      "parent_id": "booking-pilot",
+      "title": "Get the partner account onto the staging site",
+      "summary": "The partner account and access worked in the first live session.",
+      "resume": "",
+      "state": "settled",
+      "kind": "task",
+      "revision": 2
+    },
+    {
+      "id": "staging-validation",
+      "parent_id": "booking-pilot",
+      "title": "Validate the staging environment under real use",
+      "summary": "Real use on staging has begun: the first live session exposed a cancellation defect. Save, reload, and concurrency behaviour still need checking.",
+      "resume": "Reproduce the cancellation defect on staging, then check save and reload behaviour and rerun the acceptance suite.",
+      "state": "open",
+      "kind": "task",
+      "revision": 2
+    },
+    {
+      "id": "live-sessions",
+      "parent_id": "booking-pilot",
+      "title": "Run live sessions with the partner",
+      "summary": "The first live session was held on staging; it exposed a cancellation defect. More sessions follow next week.",
+      "resume": "Run next week's sessions and keep noting confusion, slow steps, and failures.",
+      "state": "open",
+      "kind": "task",
+      "revision": 2
+    },
+    {
+      "id": "release-preparation",
+      "parent_id": "staging-validation",
+      "title": "Prepare the public release",
+      "summary": "After the pilot findings and staging risks are addressed, prepare the listing, metadata, and rollout plan.",
+      "resume": "Begin only after the live-session findings and staging risks are addressed.",
+      "state": "planned",
+      "kind": "task",
+      "revision": 1
+    },
+    {
+      "id": "cancellation-bug",
+      "parent_id": "staging-validation",
+      "title": "Fix cancellation removing the wrong booking and skipping the confirmation email",
+      "summary": "In the first live session on staging, cancelling a booking removed the wrong booking and no confirmation email arrived. Release-blocking until reproduced and fixed.",
+      "resume": "Reproduce on staging with the partner's account, trace the cancellation path, and confirm the email is sent.",
+      "state": "open",
+      "kind": "task",
+      "revision": 1
+    }
+  ]
+}

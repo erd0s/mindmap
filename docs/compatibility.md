@@ -69,6 +69,18 @@ re-adds the installed plugin. Neither path changes the shared Mindmap database.
 
 The installations live in different host directories, but their runtime state does not. Plugin caches are never used as the database location.
 
+## Execution-mode boundary
+
+Mindmap chooses the active project by directory, so it must also decide which processes beneath that directory are coding sessions it can serve. These rules were checked against Codex 0.154.0 and Claude Code 2.1.268.
+
+- A nonpersistent Codex run (`codex exec --ephemeral`) sends `transcript_path: null` on every hook event; a persistent `codex exec` or an interactive session sends the rollout path on every event. Mindmap does not attach, inject context into, count tools for, or require a checkpoint from a nonpersistent Codex session. There is no transcript to back-fill, no later session could reconcile a missed checkpoint, and a utility launcher constrained to a read-only sandbox and an output schema may be unable to execute the record command.
+- `MINDMAP_TRACKING=off` in the host process environment opts any launcher out of automatic tracking on both hosts. `MINDMAP_TRACKING=on` opts a nonpersistent launcher in; the semantic evaluation harness sets it because it deliberately runs nonpersistent sessions.
+- An explicit `$mindmap`, `$mindmap:manage`, or `/mindmap:manage` action is always honoured, and a session that is already attached keeps its full lifecycle, including tool counting and the Stop checkpoint requirement. Exclusion is decided only for sessions that are not yet attached.
+- The Codex sandbox is not visible to hooks: `permission_mode` reported `bypassPermissions` for a `--sandbox read-only` exec run, so persistence is the signal, not permissions.
+- Claude Code's `--no-session-persistence` still supplies a transcript path that is never written, and `claude -p` exposes `CLAUDE_CODE_ENTRYPOINT=sdk-cli` to hooks while interactive sessions expose `cli`. Mindmap does not yet act on that signal because Claude Desktop's value has not been verified; a Claude utility launcher should set `MINDMAP_TRACKING=off`.
+
+Excluded runs leave no rows in the database, so a map cannot show that an automated run happened. Substantive delegated work that must reach the map should either persist its transcript or opt in explicitly, and the owning interactive session remains responsible for reconciling the returned result.
+
 ## Official references
 
 - [Codex: Build plugins](https://learn.chatgpt.com/docs/build-plugins)

@@ -601,6 +601,103 @@ class LifecycleTests(unittest.TestCase):
             {"summary": "Resumed safely", "operations": []},
         )
 
+    def test_nonpersistent_codex_session_is_not_tracked(self) -> None:
+        # Observed contract: `codex exec --ephemeral` sends transcript_path null on
+        # every event. Such a run (for example an issue-shaping utility with a
+        # read-only sandbox) must not be attached, given context, or asked for a
+        # checkpoint beneath an active root.
+        project = self.store.activate(self.root)
+        base = {"cwd": str(self.root), "session_id": "ephemeral", "transcript_path": None}
+        self.assertIsNone(handle_hook("codex", {
+            **base, "hook_event_name": "SessionStart", "source": "startup",
+        }, self.store))
+        self.assertIsNone(handle_hook("codex", {
+            **base, "hook_event_name": "UserPromptSubmit", "turn_id": "shape-1",
+            "prompt": "You are shaping a GitHub issue for the maintainer.",
+        }, self.store))
+        self.assertIsNone(handle_hook("codex", {
+            **base, "hook_event_name": "PreToolUse", "turn_id": "shape-1", "tool_name": "Bash",
+        }, self.store))
+        self.assertIsNone(handle_hook("codex", {
+            **base, "hook_event_name": "Stop", "turn_id": "shape-1",
+            "stop_hook_active": False, "last_assistant_message": "{\"title\": \"Bug\"}",
+        }, self.store))
+        self.assertIsNone(handle_hook("codex", {
+            **base, "hook_event_name": "SessionEnd", "reason": "other",
+        }, self.store))
+        self.assertIsNone(self.store.session("codex", "ephemeral"))
+        self.assertEqual(self.store.project_snapshot(project["id"])["sessions"], [])
+
+    def test_persistent_codex_payload_with_transcript_path_is_tracked(self) -> None:
+        self.store.activate(self.root)
+        output = handle_hook("codex", {
+            "hook_event_name": "UserPromptSubmit", "cwd": str(self.root),
+            "session_id": "persistent", "turn_id": "turn-1", "prompt": "Ordinary work",
+            "transcript_path": str(self.base / "rollout.jsonl"),
+        }, self.store)
+        self.assertIn("MINDMAP_ACTIVE_V1", output["hookSpecificOutput"]["additionalContext"])
+        self.assertIsNotNone(self.store.session("codex", "persistent"))
+
+    def test_nonpersistent_codex_session_honours_explicit_invocation(self) -> None:
+        self.store.activate(self.root)
+        base = {"cwd": str(self.root), "session_id": "ephemeral-status", "transcript_path": None}
+        output = handle_hook("codex", {
+            **base, "hook_event_name": "UserPromptSubmit", "turn_id": "status-1",
+            "prompt": "$mindmap:manage status",
+        }, self.store)
+        self.assertIn("MINDMAP_ACTIVE_V1", output["hookSpecificOutput"]["additionalContext"])
+        self.assertIsNotNone(self.store.session("codex", "ephemeral-status"))
+        # Once explicitly attached, the session keeps its full lifecycle,
+        # including tool counting and the Stop checkpoint requirement.
+        handle_hook("codex", {
+            **base, "hook_event_name": "PreToolUse", "turn_id": "status-1", "tool_name": "Bash",
+        }, self.store)
+        self.assertEqual(
+            self.store.turn("codex", "ephemeral-status", "status-1")["tool_activity_generation"], 1
+        )
+        blocked = handle_hook("codex", {
+            **base, "hook_event_name": "Stop", "turn_id": "status-1",
+            "stop_hook_active": False, "last_assistant_message": "Status reported.",
+        }, self.store)
+        self.assertEqual(blocked["decision"], "block")
+
+    def test_tracking_environment_overrides_host_signals(self) -> None:
+        self.store.activate(self.root)
+        with patch.dict(os.environ, {"MINDMAP_TRACKING": "off"}):
+            self.assertIsNone(handle_hook("claude", {
+                "hook_event_name": "UserPromptSubmit", "cwd": str(self.root),
+                "session_id": "opted-out-claude", "prompt_id": "p1", "prompt": "Smoke test",
+                "transcript_path": str(self.base / "claude.jsonl"),
+            }, self.store))
+            self.assertIsNone(handle_hook("codex", {
+                "hook_event_name": "Stop", "cwd": str(self.root),
+                "session_id": "opted-out-codex", "turn_id": "t1",
+                "transcript_path": str(self.base / "rollout.jsonl"),
+                "stop_hook_active": False, "last_assistant_message": "HYGIENE_SMOKE_OK",
+            }, self.store))
+            self.assertIsNone(self.store.session("claude", "opted-out-claude"))
+            self.assertIsNone(self.store.session("codex", "opted-out-codex"))
+            # An explicit invocation still wins over the launcher opt-out.
+            output = handle_hook("codex", self.codex_prompt("$mindmap:manage status"), self.store)
+            self.assertIn("MINDMAP_ACTIVE_V1", output["hookSpecificOutput"]["additionalContext"])
+        with patch.dict(os.environ, {"MINDMAP_TRACKING": "on"}):
+            output = handle_hook("codex", {
+                "hook_event_name": "UserPromptSubmit", "cwd": str(self.root),
+                "session_id": "opted-in-ephemeral", "turn_id": "t1", "prompt": "Eval trial",
+                "transcript_path": None,
+            }, self.store)
+            self.assertIn("MINDMAP_ACTIVE_V1", output["hookSpecificOutput"]["additionalContext"])
+            self.assertIsNotNone(self.store.session("codex", "opted-in-ephemeral"))
+
+    def test_active_context_explains_started_planned_parents_and_finished_handoffs(self) -> None:
+        output = handle_hook("codex", self.codex_prompt("$mindmap:manage start"), self.store)
+        context = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("A planned concept has started once a child beneath it records work", context)
+        self.assertIn("a preparatory decision recorded before the work starts does not count", context)
+        self.assertIn("do not settle broader outcomes or remaining acceptance checks", context)
+        self.assertIn("handoff, delegated step, or prerequisite finished elsewhere", context)
+        self.assertIn("settle only what the evidence completes", context)
+
 
 if __name__ == "__main__":
     unittest.main()

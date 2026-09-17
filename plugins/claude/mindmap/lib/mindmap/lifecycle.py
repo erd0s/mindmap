@@ -10,6 +10,7 @@ from typing import Any
 
 from .errors import MindmapError
 from .paths import database_path, discover_project_root
+from .policy import tracking_exclusion
 from .store import Store
 
 
@@ -139,6 +140,8 @@ def _active_context(
         'JSON shape: {"summary":"what changed or no map change","operations":[{"op":"upsert","id":"stable-id","title":"...","summary":"what this concept means","resume":"where to pick it up","state":"planned|open|settled","kind":"goal|thread|decision|task|question|note","parent_id":null,"expected_revision":2}]}. Omit expected_revision for a new id; use the exact current revision for any update, settle, or remove. Add "restore":true only when the user explicitly asks to restore an id listed under USER-DELETED BRANCHES.',
         "Create only meaningful concepts needed for a quick overview. Connect each child to the thought or goal that caused it. Capture explicit future intentions as planned, unresolved concepts as open, and covered/decided/completed/rejected concepts as settled. Do not invent unspoken plans.",
         'An upsert of an existing concept retains every omitted field. To clear stale frontier text, send "resume":"" explicitly; saying it is cleared in the final response is not a map change.',
+        "A planned concept has started once a child beneath it records work that has begun or finished; a preparatory decision recorded before the work starts does not count. In that same checkpoint set the planned parent open (or settle it) and rewrite ancestor and sibling resumes that still present the started work as future; do not settle broader outcomes or remaining acceptance checks on that evidence alone.",
+        "When the conversation shows that a handoff, delegated step, or prerequisite finished elsewhere, settle that concept with the received outcome and clear its waiting resume. Keep the broader goal, the receiver's own remaining work, and paused branches open; settle only what the evidence completes.",
         "When new evidence merely changes the state of an existing concept, update or reopen that same id. Do not add a child that only restates the symptom or evidence unless the conversation made it an independent investigation or plan. Conversely, preserve a distinct side quest, deliverable or handoff, decision, or deferred plan with its own state or re-entry point; a root summary is not a substitute for that branch.",
         "Treat the record command as the final tool action, not merely the final implementation action. Complete every side effect first, including audio, clipboard, notifications, cleanup, and status checks. If another instruction puts a side effect after the checkpoint, preserve the side effect but move it immediately before the record. After the record succeeds, send the final response without calling another tool. A later same-interaction user prompt reopens the checkpoint.",
     ]
@@ -170,10 +173,17 @@ def handle_hook(host: str, payload: dict[str, Any], store: Store | None = None) 
     transcript_path = payload.get("transcript_path")
     prompt = str(payload.get("prompt") or "")
     action = explicit_action(prompt)
+    # An explicit Mindmap invocation is always honoured. Otherwise a launcher
+    # opt-out or a nonpersistent host run must not be attached, given context,
+    # counted, or asked for a checkpoint. A session that is already attached
+    # keeps its normal lifecycle so an explicit start is never half-tracked.
+    exclusion = None if action else tracking_exclusion(host, payload)
     if store is None:
         if not action and not database_path().exists():
             return None
         store = Store()
+    if exclusion and (not session_id or store.session(host, session_id) is None):
+        return None
     project = store.find_project(cwd, active_only=True)
     activated_now = False
 

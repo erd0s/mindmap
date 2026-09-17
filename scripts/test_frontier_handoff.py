@@ -198,6 +198,9 @@ def run_trial(
             {
                 "MINDMAP_HOME_DIR": str(home),
                 "MINDMAP_DATA_DIR": str(data),
+                # The harness deliberately runs nonpersistent host sessions;
+                # production would exclude them, so opt in explicitly.
+                "MINDMAP_TRACKING": "on",
                 "PYTHONPATH": str(ROOT / "src")
                 + (os.pathsep + existing_pythonpath if existing_pythonpath else ""),
             }

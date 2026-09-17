@@ -58,7 +58,7 @@ The display route is a stable, lowercased, percent-encoded form of the path bene
 
 ## Lifecycle
 
-1. An inactive global hook exits without model-visible output unless it sees an exact Mindmap invocation or finds the current directory in the small active-project registry.
+1. An inactive global hook exits without model-visible output unless it sees an exact Mindmap invocation or finds the current directory in the small active-project registry. Beneath an active root it also exits silently for a nonpersistent Codex session (`transcript_path` null) or a process whose launcher set `MINDMAP_TRACKING=off`, unless the prompt is an explicit Mindmap action or the session is already attached. See [the execution-mode boundary](compatibility.md#execution-mode-boundary).
 2. `start` activates the project, attaches the current session, and imports available history.
 3. The host adapter supplies project, host, session, and interaction identity.
 4. The skill compresses the session into goals, branches, questions, decisions, plans, and resume points.
@@ -70,6 +70,8 @@ The display route is a stable, lowercased, percent-encoded form of the path bene
 9. Future local sessions read the same project map regardless of which supported host wrote it.
 
 Transcript parsing is an adapter rather than a storage contract. Unknown JSONL records are ignored. Claude Stop input supplies the final assistant message because its transcript can lag the hook event.
+
+Context and snapshots carry warning-only consistency checks: a settled concept with an action-like resume, an unsettled summary that claims completion, an unsettled root that calls itself superseded, a reopen that adds no summary or resume, and a planned parent whose open or settled child was recorded after the parent's last revision. The agent reconciles them from conversation evidence. Deterministic code never changes a causal parent's state.
 
 ## Viewer consistency
 

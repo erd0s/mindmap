@@ -32,6 +32,10 @@ def note_pre_tool_activity(host: str, payload: dict[str, Any]) -> None:
     session_id = payload.get("session_id")
     if not database.is_file() or not isinstance(session_id, str) or not session_id:
         return
+    # The fast path never attaches a session. An excluded run has no session
+    # row and therefore no turn to advance, while any attached session keeps
+    # counting its tools regardless of the launcher policy, so no eligibility
+    # check is needed here.
     cwd = Path(str(payload.get("cwd") or os.getcwd())).expanduser().resolve(strict=False)
     interaction_id = payload.get("turn_id") or payload.get("prompt_id")
     if not isinstance(interaction_id, str) or not interaction_id:

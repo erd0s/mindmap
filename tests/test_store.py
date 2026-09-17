@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import itertools
 import sqlite3
 import subprocess
 import sys
@@ -9,6 +10,7 @@ import threading
 import unittest
 import json
 import stat
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import mindmap.store as store_module
@@ -451,6 +453,203 @@ class StoreTests(unittest.TestCase):
             self.store.project_snapshot(project["id"])["semantic_warnings"], []
         )
         self.assertNotIn("MINDMAP_SEMANTIC_WARNINGS_V1", self.store.context(self.project_root))
+
+    def test_planned_parent_with_later_child_activity_is_flagged(self) -> None:
+        # Shape of the audited staging case: a planned parent kept its state and
+        # resume while a later checkpoint recorded an open bug beneath it.
+        project = self.activate()
+        self.store.register_session(project["id"], "codex", "planned-parent")
+        with patch("mindmap.store.utc_now", return_value="2000-01-01T11:38:13.000+00:00"):
+            self.store.record(
+                self.project_root, "codex", "planned-parent", "seed",
+                {"summary": "Seed a pilot with planned validation phases", "operations": [
+                    {"op": "upsert", "id": "pilot", "title": "Run the pilot", "state": "open"},
+                    {
+                        "op": "upsert", "id": "staging", "title": "Validate staging under real use",
+                        "state": "planned", "parent_id": "pilot",
+                        "resume": "After the first live session, rerun the acceptance suite.",
+                    },
+                    {
+                        "op": "upsert", "id": "later-phase", "title": "Prepare the release",
+                        "state": "planned", "parent_id": "staging",
+                    },
+                    {
+                        "op": "upsert", "id": "prepared-phase", "title": "Consolidate the tasks",
+                        "state": "planned", "parent_id": "pilot",
+                    },
+                    {
+                        "op": "upsert", "id": "prepared-decision", "title": "Agreed the method",
+                        "state": "settled", "parent_id": "prepared-phase",
+                    },
+                    {
+                        "op": "upsert", "id": "reconsidered", "title": "Combine the two tools",
+                        "state": "planned", "parent_id": "pilot",
+                    },
+                    {
+                        "op": "upsert", "id": "open-question", "title": "Explore a text format",
+                        "state": "open", "kind": "question", "parent_id": "reconsidered",
+                    },
+                    {
+                        "op": "upsert", "id": "step-phase", "title": "Migrate the reports",
+                        "state": "planned", "parent_id": "pilot",
+                    },
+                    {
+                        "op": "upsert", "id": "step-task", "title": "Migrate the first report",
+                        "state": "planned", "parent_id": "step-phase",
+                    },
+                    {
+                        "op": "upsert", "id": "restructured-phase", "title": "Rework the intake",
+                        "state": "planned", "parent_id": "pilot",
+                    },
+                    {
+                        "op": "upsert", "id": "old-decision", "title": "Chose the intake format",
+                        "state": "settled", "kind": "decision", "parent_id": "pilot",
+                    },
+                    {
+                        "op": "upsert", "id": "debris", "title": "Intake notes",
+                        "state": "open", "parent_id": "pilot",
+                    },
+                    {
+                        "op": "upsert", "id": "moved-decision", "title": "Chose the intake owner",
+                        "state": "settled", "kind": "decision", "parent_id": "debris",
+                    },
+                    {
+                        "op": "upsert", "id": "notes-phase", "title": "Write the handbook",
+                        "state": "planned", "parent_id": "pilot",
+                    },
+                    {
+                        "op": "upsert", "id": "note-decision", "title": "Chose the handbook format",
+                        "state": "settled", "kind": "decision", "parent_id": "notes-phase",
+                    },
+                ]},
+            )
+        with patch("mindmap.store.utc_now", return_value="2000-01-01T17:44:58.000+00:00"):
+            self.store.record(
+                self.project_root, "codex", "planned-parent", "later",
+                {"summary": "Recorded a live-session bug, started a planned step, and tidied old decisions", "operations": [
+                    {
+                        "op": "upsert", "id": "live-bug", "title": "Fix the cancellation bug",
+                        "state": "open", "parent_id": "staging",
+                        "summary": "The first live session on staging removed the wrong booking.",
+                    },
+                    {
+                        "op": "upsert", "id": "reconsidered", "expected_revision": 1,
+                        "summary": "Still intended after the text-format question; not started.",
+                    },
+                    # A planned child that begins work beneath a planned parent.
+                    {
+                        "op": "upsert", "id": "step-task", "state": "open", "expected_revision": 1,
+                        "resume": "Finish the first report migration.",
+                    },
+                    # Pure restructuring: reparent an old settled decision under a
+                    # planned parent, both by upsert and by remove-with-reparent.
+                    {
+                        "op": "upsert", "id": "old-decision", "parent_id": "restructured-phase",
+                        "expected_revision": 1,
+                    },
+                    {
+                        "op": "remove", "id": "debris", "expected_revision": 1,
+                        "reparent_to": "restructured-phase",
+                    },
+                    # A wording edit on an old settled child is not new work.
+                    {
+                        "op": "upsert", "id": "note-decision", "expected_revision": 1,
+                        "summary": "The handbook uses the shared template.",
+                    },
+                ]},
+            )
+        snapshot = self.store.project_snapshot(project["id"])
+        warnings = {
+            (warning["code"], warning["item_id"]): warning["message"]
+            for warning in snapshot["semantic_warnings"]
+        }
+        self.assertEqual(set(warnings), {
+            ("planned_parent_after_child_activity", "staging"),
+            ("planned_parent_after_child_activity", "step-phase"),
+        })
+        self.assertIn("live-bug", warnings[("planned_parent_after_child_activity", "staging")])
+        self.assertIn("step-task", warnings[("planned_parent_after_child_activity", "step-phase")])
+        parents = {item["id"]: item["parent_id"] for item in snapshot["items"]}
+        self.assertEqual(parents["old-decision"], "restructured-phase")
+        self.assertEqual(parents["moved-decision"], "restructured-phase")
+        states = {item["id"]: item["state"] for item in snapshot["items"]}
+        # Warning only: deterministic code never changes a causal parent's state.
+        self.assertEqual(states["staging"], "planned")
+        context = self.store.context(self.project_root)
+        self.assertIn("planned_parent_after_child_activity:staging", context)
+        self.assertIn("do not auto-settle causal parents", context)
+
+    def test_same_checkpoint_child_state_change_does_not_outdate_parent(self) -> None:
+        # Events are timestamped individually, after the shared item timestamp.
+        # Reconcile the parent and child together, with a clock that advances
+        # during the transaction rather than freezing every event to one time.
+        project = self.activate()
+        with patch("mindmap.store.utc_now", return_value="2000-01-01T11:00:00.000+00:00"):
+            self.store.record(self.project_root, "codex", "same-checkpoint", "seed", {
+                "summary": "Plan a phase and its preparatory decision", "operations": [
+                    {"op": "upsert", "id": "phase", "title": "Run the pilot", "state": "planned"},
+                    {"op": "upsert", "id": "decision", "title": "Choose the pilot method",
+                     "state": "planned", "parent_id": "phase"},
+                ],
+            })
+        ticks = itertools.count()
+        start = datetime(2000, 1, 1, 13, tzinfo=timezone.utc)
+        with patch("mindmap.store.utc_now", side_effect=lambda: (
+            start + timedelta(milliseconds=next(ticks))
+        ).isoformat(timespec="milliseconds")):
+            self.store.record(self.project_root, "codex", "same-checkpoint", "reconcile", {
+                "summary": "Choose the method; pilot work remains planned", "operations": [
+                    {"op": "upsert", "id": "phase", "expected_revision": 1,
+                     "summary": "Method agreed; the pilot itself has not started."},
+                    {"op": "settle", "id": "decision", "expected_revision": 1},
+                ],
+            })
+        self.assertEqual(self.store.project_snapshot(project["id"])["semantic_warnings"], [])
+        # A later wording edit must not revive a false warning from the older
+        # state-change event once the child's latest event belongs to another record.
+        with patch("mindmap.store.utc_now", return_value="2000-01-01T14:00:00.000+00:00"):
+            self.store.record(self.project_root, "codex", "same-checkpoint", "wording", {
+                "summary": "Clarify the decision", "operations": [
+                    {"op": "upsert", "id": "decision", "expected_revision": 2,
+                     "summary": "Use the standard pilot method."},
+                ],
+            })
+        self.assertEqual(self.store.project_snapshot(project["id"])["semantic_warnings"], [])
+
+    def test_new_parent_reconciliation_does_not_hide_later_same_interaction_work(self) -> None:
+        project = self.activate()
+        with patch("mindmap.store.utc_now", return_value="2000-01-01T11:00:00.000+00:00"):
+            self.store.record(self.project_root, "codex", "steered", "seed", {
+                "summary": "Plan the method decision", "operations": [
+                    {"op": "upsert", "id": "decision", "title": "Choose the method", "state": "planned"},
+                ],
+            })
+        ticks = itertools.count()
+        start = datetime(2000, 1, 1, 13, tzinfo=timezone.utc)
+        with patch("mindmap.store.utc_now", side_effect=lambda: (
+            start + timedelta(milliseconds=next(ticks))
+        ).isoformat(timespec="milliseconds")):
+            # The child operation intentionally precedes the new parent.
+            self.store.record(self.project_root, "codex", "steered", "shared-turn", {
+                "summary": "Group the unresolved method question beneath the planned pilot", "operations": [
+                    {"op": "upsert", "id": "decision", "expected_revision": 1,
+                     "state": "open", "parent_id": "phase"},
+                    {"op": "upsert", "id": "phase", "title": "Run the pilot", "state": "planned"},
+                ],
+            })
+        self.assertEqual(self.store.project_snapshot(project["id"])["semantic_warnings"], [])
+        with patch("mindmap.store.utc_now", return_value="2000-01-01T14:00:00.000+00:00"):
+            session = self.store.session("codex", "steered")
+            self.store.begin_turn(project["id"], session["id"], "shared-turn", "The method is agreed.")
+            self.store.record(self.project_root, "codex", "steered", "shared-turn", {
+                "summary": "The method was agreed later in the same interaction", "operations": [
+                    {"op": "settle", "id": "decision", "expected_revision": 2},
+                ],
+            })
+        self.assertEqual([
+            (warning["code"], warning["item_id"])
+            for warning in self.store.project_snapshot(project["id"])["semantic_warnings"]
+        ], [("planned_parent_after_child_activity", "phase")])
 
     def test_user_deleted_branch_requires_explicit_restore(self) -> None:
         project = self.activate()

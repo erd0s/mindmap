@@ -58,6 +58,10 @@ Grow the fixture beyond 24 meaningful sibling concepts across several turns. Exp
 
 Start a separate session outside the project and invoke start. Expected: activation is blocked for that session rather than silently retargeted through a tool workdir.
 
+Beneath the active project, run `codex exec --ephemeral --sandbox read-only "Reply with exactly OK"`. Expected: the run completes, no session or turn row is created, Stop does not request a checkpoint, and `mindmap snapshot` lists no new session. Repeat with `MINDMAP_TRACKING=on` in the environment: the session attaches with an empty transcript path and Stop requests one reconciliation pass because nothing was checkpointed. Then send an ordinary interactive prompt with `MINDMAP_TRACKING=off`: nothing attaches, while `$mindmap:manage status` in the same environment still answers.
+
+In a later checkpoint, record an open child beneath a planned concept without touching the parent. Expected: the next injected context lists `planned_parent_after_child_activity` for that parent, the parent's state is unchanged until the agent records the transition, and a planned parent whose settled child was recorded in the same checkpoint produces no warning.
+
 Run the opt-in behavioral handoff evaluation:
 
 ```sh
@@ -65,6 +69,16 @@ make test-frontier-handoff
 ```
 
 This uses one real Codex model turn and is intentionally outside `make validate`. Expected: the fixture task completes and its decision becomes a child of the seeded target frontier, not the root or the plausible decoy.
+
+Run the bounded live evaluation of the two resume-state fixtures on both hosts:
+
+```sh
+PYTHONPATH=src:. python3 scripts/run_semantic_evals.py --host both --runs 3 \
+  --fixture planned-parent-transition --fixture handoff-completion-reconciliation \
+  --output /path/to/resume-state-results.json
+```
+
+Expected: every trial checkpoints; the planned staging parent becomes open while release preparation stays planned; the handoff records the partial outcome first and settles only on completion while the project's own experiments remain untouched.
 
 ## 4. Claude handoff
 

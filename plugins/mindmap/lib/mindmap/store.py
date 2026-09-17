@@ -68,17 +68,74 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
+def _timestamp(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 def semantic_warnings(
     items: list[dict[str, Any]],
     latest_item_updates: dict[str, dict[str, Any]],
+    state_changes: dict[str, str] | None = None,
 ) -> list[dict[str, str]]:
-    """Return high-confidence, warning-only map inconsistencies."""
+    """Return high-confidence, warning-only map inconsistencies.
+
+    ``state_changes`` maps an item id to the time of its latest state-changing
+    update; ``project_snapshot`` derives it from provenance events. Without it
+    only creation and settlement times can prove that work beneath a planned
+    parent has begun.
+    """
     warnings: list[dict[str, str]] = []
+    state_changes = state_changes or {}
+    children_by_parent: dict[str | None, list[dict[str, Any]]] = {}
+    for item in items:
+        children_by_parent.setdefault(item.get("parent_id"), []).append(item)
     for item in items:
         item_id = str(item["id"])
         state = str(item["state"])
         summary = str(item.get("summary") or "").strip()
         resume = str(item.get("resume") or "").strip()
+        if state == "planned":
+            # A planned concept is "not started". When a child later begins or
+            # finishes work beneath it, the parent was left unrevised while its
+            # work started. Only the child's creation, a state change, or its
+            # settlement counts as work: a preparatory decision recorded with
+            # the parent, a later wording edit, or a reparenting of an old
+            # child stays quiet, and so does a parent revised after its
+            # children.
+            parent_updated = _timestamp(item.get("updated_at"))
+            started = []
+            for child in children_by_parent.get(item_id, []):
+                if str(child.get("state")) == "planned" or parent_updated is None:
+                    continue
+                child_activity = [
+                    stamp
+                    for stamp in (
+                        _timestamp(child.get("created_at")),
+                        _timestamp(child.get("settled_at")),
+                        _timestamp(state_changes.get(str(child["id"]))),
+                    )
+                    if stamp is not None
+                ]
+                if child_activity and max(child_activity) > parent_updated:
+                    started.append(str(child["id"]))
+            if started:
+                warnings.append({
+                    "code": "planned_parent_after_child_activity",
+                    "item_id": item_id,
+                    "message": (
+                        "Planned concept has open or settled child work recorded after "
+                        "its last revision (" + ", ".join(started) + "). Work beneath it "
+                        "has begun: set it open or settle it, and rewrite resumes that "
+                        "still present that work as future, or explain why it remains "
+                        "unstarted."
+                    ),
+                })
         if (
             state == "settled"
             and resume
@@ -1578,22 +1635,58 @@ class Store:
         with self.read_transaction() as connection:
             project, items = self._project_and_items(connection, project_id)
             latest_item_updates: dict[str, dict[str, Any]] = {}
+            state_changes: dict[str, str] = {}
+            latest_item_records: dict[str, str | None] = {}
+            state_change_records: dict[str, str | None] = {}
             for row in connection.execute(
                 """
-                SELECT item_id, payload_json FROM events
-                WHERE project_id = ? AND event_type = 'item.updated'
+                SELECT item_id, event_type, payload_json, created_at, idempotency_key FROM events
+                WHERE project_id = ?
+                  AND event_type IN ('item.created', 'item.updated', 'item.restored')
                 ORDER BY id DESC
                 """,
                 (project_id,),
             ):
                 item_id = row["item_id"]
-                if item_id and item_id not in latest_item_updates:
-                    try:
-                        payload = json.loads(row["payload_json"])
-                    except (json.JSONDecodeError, TypeError):
-                        continue
-                    if isinstance(payload, dict):
-                        latest_item_updates[item_id] = payload
+                # Record keys include the host, session, interaction and payload
+                # digest; only the final operation index differs between items.
+                # A later checkpoint in a steered interaction has a different key.
+                key = row["idempotency_key"]
+                record_key = key.rpartition(":")[0] if key and key.startswith("record:") else None
+                if item_id and item_id not in latest_item_records:
+                    latest_item_records[item_id] = record_key
+                if row["event_type"] != "item.updated":
+                    continue
+                if not item_id or (
+                    item_id in latest_item_updates and item_id in state_changes
+                ):
+                    continue
+                try:
+                    payload = json.loads(row["payload_json"])
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+                if item_id not in latest_item_updates:
+                    latest_item_updates[item_id] = payload
+                operation = payload.get("operation")
+                if item_id not in state_changes and isinstance(operation, dict):
+                    new_state = (
+                        "settled" if operation.get("op") == "settle"
+                        else operation.get("state")
+                    )
+                    if new_state and new_state != payload.get("previous_state"):
+                        state_changes[item_id] = str(row["created_at"])
+                        state_change_records[item_id] = record_key
+            items_by_id = {item["id"]: item for item in items}
+            for item_id, record_key in state_change_records.items():
+                item = items_by_id.get(item_id)
+                parent = items_by_id.get(item.get("parent_id")) if item else None
+                if parent and record_key and latest_item_records.get(parent["id"]) == record_key:
+                    # Individual event timestamps can tick after the shared item
+                    # timestamp within one atomic record. That is not later work,
+                    # even if the child has received further wording edits since.
+                    state_changes[item_id] = parent["updated_at"]
             sessions = [
                 dict(row)
                 for row in connection.execute(
@@ -1633,7 +1726,9 @@ class Store:
         return {
             "project": project,
             "items": items,
-            "semantic_warnings": semantic_warnings(items, latest_item_updates),
+            "semantic_warnings": semantic_warnings(
+                items, latest_item_updates, state_changes
+            ),
             "sessions": sessions,
             "events": events,
             "user_deleted_branches": user_deleted_branches,

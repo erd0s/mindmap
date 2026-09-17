@@ -250,6 +250,20 @@ def claude_trial(
     diagnostics = completed.stderr
     try:
         payload = json.loads(completed.stdout)
+        if isinstance(payload, list):
+            # Claude Code 2.1.268 prints the message stream as a JSON array; the
+            # final "result" message carries the fields that older releases
+            # returned as the whole document.
+            payload = next(
+                (
+                    message
+                    for message in reversed(payload)
+                    if isinstance(message, dict) and message.get("type") == "result"
+                ),
+                None,
+            )
+        if not isinstance(payload, dict):
+            raise json.JSONDecodeError("unexpected Claude JSON shape", completed.stdout, 0)
         final = str(payload.get("result") or "")
         diagnostics = json.dumps(
             {
@@ -292,6 +306,9 @@ def run_trial(
             {
                 "MINDMAP_HOME_DIR": str(home),
                 "MINDMAP_DATA_DIR": str(data),
+                # The harness deliberately runs nonpersistent host sessions;
+                # production would exclude them, so opt in explicitly.
+                "MINDMAP_TRACKING": "on",
                 "PYTHONPATH": str(package_root / "src")
                 + (os.pathsep + existing_pythonpath if existing_pythonpath else ""),
             }

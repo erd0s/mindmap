@@ -6,6 +6,17 @@ All notable changes appear here. Mindmap follows semantic versioning while the p
 
 - Replace an installed local Mindmap marketplace with the requested public
   source before upgrading Codex or Claude Code, preserving Claude plugin data.
+- Leave nonpersistent Codex sessions (`codex exec --ephemeral`) unattached
+  beneath an active project and honour a `MINDMAP_TRACKING=off|on` launcher
+  override, so automated utility runs no longer produce unresolvable
+  checkpoints or receive injected context.
+- Warn when a planned concept's open or settled child was recorded after the
+  parent's last revision, and tell the agent to move started planned work and
+  finished handoffs or prerequisites in the same checkpoint while keeping
+  broader outcomes open.
+- Add the planned-parent transition and handoff completion semantic fixtures,
+  and accept Claude Code's list-shaped `--output-format json` result in the
+  semantic evaluation harness.
 
 ## 0.3.1 — 2026-09-02
 

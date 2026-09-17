@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from mindmap.activity import note_pre_tool_activity, run_pre_tool_hook
 from mindmap.store import Store
@@ -61,6 +62,36 @@ class ActivityHookTests(unittest.TestCase):
         })
         self.assertEqual(result, 0)
         self.assertFalse((self.base / "data").exists())
+
+    def test_fast_path_keeps_counting_for_an_attached_session_under_launcher_opt_out(self) -> None:
+        # An attached session keeps its full lifecycle, including tool counting,
+        # even when the launcher environment opts out of automatic tracking;
+        # otherwise the record's own PreToolUse would save generation zero and
+        # post-checkpoint work would go undetected.
+        store = Store()
+        project = store.activate(self.root)
+        session = store.register_session(project["id"], "codex", "session")
+        store.begin_turn(project["id"], session["id"], "turn", "$mindmap:manage status")
+        payload = {
+            "cwd": str(self.root), "session_id": "session", "turn_id": "turn",
+            "tool_name": "Bash", "transcript_path": str(self.base / "rollout.jsonl"),
+        }
+        with patch.dict(os.environ, {"MINDMAP_TRACKING": "off"}):
+            note_pre_tool_activity("codex", payload)
+            note_pre_tool_activity("codex", {**payload, "session_id": "never-attached"})
+        self.assertEqual(store.turn("codex", "session", "turn")["tool_activity_generation"], 1)
+        self.assertIsNone(store.session("codex", "never-attached"))
+
+    def test_fast_path_counts_tools_for_an_explicitly_attached_nonpersistent_session(self) -> None:
+        store = Store()
+        project = store.activate(self.root)
+        session = store.register_session(project["id"], "codex", "ephemeral", None)
+        store.begin_turn(project["id"], session["id"], "turn", "$mindmap:manage status")
+        note_pre_tool_activity("codex", {
+            "cwd": str(self.root), "session_id": "ephemeral", "turn_id": "turn",
+            "tool_name": "Bash", "transcript_path": None,
+        })
+        self.assertEqual(store.turn("codex", "ephemeral", "turn")["tool_activity_generation"], 1)
 
 
 if __name__ == "__main__":

@@ -70,6 +70,8 @@ Run `mindmap` in the project for the terminal view, or open Mindmap on macOS and
 
 Mindmap remains active for the whole project directory until you stop it. New local Codex or Claude sessions beneath that directory receive the current map automatically.
 
+Automatic tracking covers local coding sessions that keep a transcript. A nonpersistent Codex run such as `codex exec --ephemeral` beneath an active project is left alone, any launcher can set `MINDMAP_TRACKING=off` to opt out, and `MINDMAP_TRACKING=on` opts a nonpersistent run in. An explicit `$mindmap` or `/mindmap:manage` action always works. See [the compatibility contract](docs/compatibility.md#execution-mode-boundary).
+
 ## Install an agent later
 
 The installer never assumes which agent you use. If you install one later, repair its integration at any time:

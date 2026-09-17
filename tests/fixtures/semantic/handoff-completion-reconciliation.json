@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "id": "handoff-completion-reconciliation",
+  "description": "A handoff to another repository returns first a verified but not yet live outcome and then full completion; the source map must record the received evidence without closing the handoff early, settle it only on completion, and leave the project's own unfinished work untouched.",
+  "project_files": [],
+  "seed_operations": [
+    {
+      "op": "upsert",
+      "id": "search-quality",
+      "title": "Improve the internal search ranking",
+      "summary": "Make the internal search return the right document first for the common queries.",
+      "resume": "Continue the ranking experiments once the parser defect is fixed upstream.",
+      "state": "open",
+      "kind": "goal",
+      "parent_id": null
+    },
+    {
+      "op": "upsert",
+      "id": "parser-fix-handoff",
+      "title": "Hand off the parser defect to the ingestion repository",
+      "summary": "The prepared parser-defect brief was handed to the ingestion-repository session. No implementation result, commit, or test result has come back to this project.",
+      "resume": "Wait for the ingestion session's findings; nothing has come back yet. Do not mark the defect repaired on the handoff alone.",
+      "state": "open",
+      "kind": "task",
+      "parent_id": "search-quality"
+    },
+    {
+      "op": "upsert",
+      "id": "ranking-experiments",
+      "title": "Run the ranking experiments",
+      "summary": "Two ranking variants are prepared for comparison on last month's queries.",
+      "resume": "Compare the two ranking variants on last month's queries.",
+      "state": "open",
+      "kind": "thread",
+      "parent_id": "search-quality"
+    },
+    {
+      "op": "upsert",
+      "id": "synonym-expansion",
+      "title": "Consider synonym expansion later",
+      "summary": "Synonym expansion is deferred until the ranking experiments show whether recall or ordering is the problem.",
+      "resume": "Revisit after the ranking experiments.",
+      "state": "planned",
+      "kind": "question",
+      "parent_id": "ranking-experiments"
+    }
+  ],
+  "steps": [
+    {
+      "id": "partial-return",
+      "prompt": "Update the active Mindmap with what came back from the ingestion repository session: it reproduced the parser defect, changed the parser and its consumer, and the ingestion, MCP, and renderer tests pass on commits 1111111 and 2222222. It explicitly left the HTTP sidecar rebuild and the documentation update as separate follow-ups over there, and until that sidecar is rebuilt the fixed parser is not live. Our ranking experiments need the live parser, so what we handed off is not finished yet. Nothing else changed here: the ranking experiments have not started. Record this on the existing handoff concept rather than creating new concepts.",
+      "expected": {
+        "nodes": [
+          {
+            "key": "root",
+            "selector": {
+              "id": "search-quality"
+            },
+            "state": "open",
+            "root": true,
+            "resume": "nonempty"
+          },
+          {
+            "key": "handoff",
+            "selector": {
+              "all_terms": [
+                "parser",
+                "sidecar"
+              ]
+            },
+            "state": "open",
+            "parent_key": "root",
+            "resume": "nonempty",
+            "resume_forbidden_terms": [
+              "nothing has come back"
+            ]
+          },
+          {
+            "key": "experiments",
+            "selector": {
+              "id": "ranking-experiments"
+            },
+            "state": "open",
+            "parent_key": "root",
+            "resume": "nonempty"
+          },
+          {
+            "key": "synonyms",
+            "selector": {
+              "id": "synonym-expansion"
+            },
+            "state": "planned",
+            "parent_key": "experiments"
+          }
+        ],
+        "unchanged_ids": [
+          "ranking-experiments",
+          "synonym-expansion"
+        ],
+        "max_new_nodes": 0,
+        "forbidden_title_patterns": [
+          "^(message|turn|prompt|tool)[-_ ]?\\d+"
+        ]
+      },
+      "reference_items": [
+        {
+          "id": "search-quality",
+          "parent_id": null,
+          "title": "Improve the internal search ranking",
+          "summary": "Make the internal search return the right document first for the common queries.",
+          "resume": "Continue the ranking experiments once the parser defect is fixed upstream.",
+          "state": "open",
+          "kind": "goal",
+          "revision": 1
+        },
+        {
+          "id": "parser-fix-handoff",
+          "parent_id": "search-quality",
+          "title": "Hand off the parser defect to the ingestion repository",
+          "summary": "The ingestion repository reproduced the parser defect and fixed the parser and its consumer; ingestion, MCP, and renderer tests pass on commits 1111111 and 2222222. The HTTP sidecar rebuild and the documentation update remain follow-ups in that repository.",
+          "resume": "Wait for the ingestion repository to finish the sidecar rebuild and documentation, then confirm the parser issue is closed.",
+          "state": "open",
+          "kind": "task",
+          "revision": 2
+        },
+        {
+          "id": "ranking-experiments",
+          "parent_id": "search-quality",
+          "title": "Run the ranking experiments",
+          "summary": "Two ranking variants are prepared for comparison on last month's queries.",
+          "resume": "Compare the two ranking variants on last month's queries.",
+          "state": "open",
+          "kind": "thread",
+          "revision": 1
+        },
+        {
+          "id": "synonym-expansion",
+          "parent_id": "ranking-experiments",
+          "title": "Consider synonym expansion later",
+          "summary": "Synonym expansion is deferred until the ranking experiments show whether recall or ordering is the problem.",
+          "resume": "Revisit after the ranking experiments.",
+          "state": "planned",
+          "kind": "question",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "id": "completion",
+      "prompt": "The ingestion repository has now finished the remaining follow-ups: the HTTP sidecar is rebuilt, the documentation is updated, and the parser issue is closed. The ranking experiments here still have not started. Reconcile the active Mindmap without creating new concepts.",
+      "expected": {
+        "nodes": [
+          {
+            "key": "root",
+            "selector": {
+              "id": "search-quality"
+            },
+            "state": "open",
+            "root": true,
+            "resume": "nonempty"
+          },
+          {
+            "key": "handoff",
+            "selector": {
+              "id": "parser-fix-handoff"
+            },
+            "from_state": "open",
+            "state": "settled",
+            "parent_key": "root",
+            "resume": "closed",
+            "resume_forbidden_terms": [
+              "wait for"
+            ]
+          },
+          {
+            "key": "experiments",
+            "selector": {
+              "id": "ranking-experiments"
+            },
+            "state": "open",
+            "parent_key": "root",
+            "resume": "nonempty"
+          },
+          {
+            "key": "synonyms",
+            "selector": {
+              "id": "synonym-expansion"
+            },
+            "state": "planned",
+            "parent_key": "experiments"
+          }
+        ],
+        "unchanged_ids": [
+          "synonym-expansion"
+        ],
+        "max_new_nodes": 0,
+        "forbidden_title_patterns": [
+          "^(message|turn|prompt|tool)[-_ ]?\\d+"
+        ]
+      },
+      "reference_items": [
+        {
+          "id": "search-quality",
+          "parent_id": null,
+          "title": "Improve the internal search ranking",
+          "summary": "Make the internal search return the right document first for the common queries. The upstream parser defect is fixed and closed.",
+          "resume": "Start the ranking experiments now that the parser defect is fixed upstream.",
+          "state": "open",
+          "kind": "goal",
+          "revision": 2
+        },
+        {
+          "id": "parser-fix-handoff",
+          "parent_id": "search-quality",
+          "title": "Hand off the parser defect to the ingestion repository",
+          "summary": "Closed upstream: the ingestion repository fixed the parser and its consumer on commits 1111111 and 2222222, rebuilt the HTTP sidecar, updated the documentation, and closed the parser issue.",
+          "resume": "",
+          "state": "settled",
+          "kind": "task",
+          "revision": 3
+        },
+        {
+          "id": "ranking-experiments",
+          "parent_id": "search-quality",
+          "title": "Run the ranking experiments",
+          "summary": "Two ranking variants are prepared for comparison on last month's queries.",
+          "resume": "Compare the two ranking variants on last month's queries.",
+          "state": "open",
+          "kind": "thread",
+          "revision": 1
+        },
+        {
+          "id": "synonym-expansion",
+          "parent_id": "ranking-experiments",
+          "title": "Consider synonym expansion later",
+          "summary": "Synonym expansion is deferred until the ranking experiments show whether recall or ordering is the problem.",
+          "resume": "Revisit after the ranking experiments.",
+          "state": "planned",
+          "kind": "question",
+          "revision": 1
+        }
+      ]
+    }
+  ]
+}
