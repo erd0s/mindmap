@@ -327,6 +327,27 @@ def claude_unattended_diagnostic() -> Result:
         return Result(passed, "missing prior checkpoint is visible and actionable")
 
 
+def eligible_correction() -> Result:
+    with isolated_store() as (store, root):
+        project = activate(store, root)
+        session = store.session("codex", "eval")
+        store.begin_turn(project["id"], session["id"], "correction", "Implement")
+        first = store.record(root, "codex", "eval", "correction", {
+            "summary": "Initial", "operations": [{"op": "upsert", "id": "idea", "title": "Idea"}]})
+        from mindmap.activity import note_pre_tool_activity
+        note_pre_tool_activity("codex", {"cwd": str(root), "session_id": "eval",
+            "turn_id": "correction", "tool_name": "apply_patch"})
+        corrected = store.record(root, "codex", "eval", "correction", {
+            "summary": "Reviewed later work", "operations": [
+                {"op": "upsert", "id": "idea", "expected_revision": 1, "summary": "Corrected"}]},
+            supersedes=first["checkpoint_token"])
+        stopped = handle_hook("codex", {"hook_event_name": "Stop", "cwd": str(root),
+            "session_id": "eval", "turn_id": "correction", "last_assistant_message": "Done"}, store)
+        item = store.project_view(project["id"])["items"][0]
+        return Result(bool(corrected["checkpointed"] and stopped is None and item["revision"] == 2),
+                      "explicit correction commits revision 2 before Stop")
+
+
 EVALUATORS: dict[str, Callable[[], Result]] = {
     "strict-record-schema": strict_record_schema,
     "same-interaction-steer": same_interaction_steer,
@@ -352,6 +373,9 @@ def main() -> int:
     for case in fixture["cases"]:
         result = EVALUATORS[case["id"]]()
         rows.append({**case, "candidate_passed": result.passed, "evidence": result.evidence})
+    result = eligible_correction()
+    rows.append({"id": "eligible-correction", "baseline_passed": None,
+                 "candidate_passed": result.passed, "evidence": result.evidence})
     if args.json:
         print(json.dumps({"baseline": fixture["baseline"], "cases": rows}, indent=2))
     else:
@@ -359,12 +383,12 @@ def main() -> int:
         print(f"Baseline: {fixture['baseline']['name']} ({fixture['baseline']['date']})")
         print("case\tbaseline\tcandidate\tevidence")
         for row in rows:
-            baseline = "PASS" if row["baseline_passed"] else "FAIL"
+            baseline = "unmeasured" if row["baseline_passed"] is None else "PASS" if row["baseline_passed"] else "FAIL"
             candidate = "PASS" if row["candidate_passed"] else "FAIL"
             print(f"{row['id']}\t{baseline}\t{candidate}\t{row['evidence']}")
-        baseline_score = sum(case["baseline_passed"] for case in rows)
+        baseline_score = sum(bool(case["baseline_passed"]) for case in rows)
         candidate_score = sum(case["candidate_passed"] for case in rows)
-        print(f"score\t{baseline_score}/{len(rows)}\t{candidate_score}/{len(rows)}")
+        print(f"score\t{baseline_score}/{len(fixture['cases'])}\t{candidate_score}/{len(rows)}")
     return 1 if args.require_targets and not all(row["candidate_passed"] for row in rows) else 0
 
 

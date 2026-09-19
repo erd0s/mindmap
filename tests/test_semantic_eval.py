@@ -14,6 +14,50 @@ FIXTURES = ROOT / "tests" / "fixtures" / "semantic"
 
 
 class SemanticEvaluationTests(unittest.TestCase):
+    def test_retained_rescoring_uses_stored_seed_text_without_surrounding_whitespace(self):
+        fixture = load_fixture(FIXTURES / "large-map-relevant-branch.json")
+        seeded = seed_items(fixture)
+        self.assertTrue(any(op.get("summary", "").endswith(" ") for op in fixture["seed_operations"]))
+        self.assertTrue(all(item["summary"] == item["summary"].strip() for item in seeded))
+        report = {"schema_version": 1, "results": [{"host": "codex", "fixture": fixture["id"],
+            "items": fixture["reference_items"], "checkpoint_delta": 1}]}
+        self.assertTrue(rescore_report(report)["results"][0]["passed"])
+
+    def test_cross_reference_is_not_a_second_deliverable_and_missing_deliverable_still_fails(self):
+        fixture = load_fixture(FIXTURES / "workforce-main-and-sidequest.json")
+        first, last = fixture_steps(fixture)
+        actual = copy.deepcopy(last["reference_items"])
+        explorer = next(item for item in actual if item["id"] == "scenario-explorer")
+        explorer["resume"] = "When requested, use Avery's handoff to define the explorer."
+        self.assertTrue(score_fixture(last, first["reference_items"], actual).passed)
+        actual = [item for item in actual if item["id"] != "avery-handoff"]
+        score = score_fixture(last, first["reference_items"], actual)
+        self.assertIn("missing required concept handoff", score.problems)
+
+    def test_handoff_identity_does_not_waive_received_evidence_or_unchanged_receiver(self):
+        fixture = load_fixture(FIXTURES / "handoff-completion-reconciliation.json")
+        first = fixture_steps(fixture)[0]
+        actual = copy.deepcopy(first["reference_items"])
+        receiver = next(item for item in actual if item["id"] == "ranking-experiments")
+        receiver["resume"] = "Wait for the parser sidecar rebuild, then run the experiments."
+        score = score_fixture(first, seed_items(fixture), actual)
+        self.assertEqual(score.matched["handoff"], "parser-fix-handoff")
+        self.assertIn("concept ranking-experiments changed unexpectedly: resume", score.problems)
+        handoff = next(item for item in actual if item["id"] == "parser-fix-handoff")
+        handoff["summary"], handoff["resume"] = "Result received.", "Wait for completion."
+        self.assertIn("concept handoff lacks required content term 'sidecar'",
+                      score_fixture(first, seed_items(fixture), actual).problems)
+
+    def test_duplicate_identified_deliverables_still_fail(self):
+        fixture = load_fixture(FIXTURES / "workforce-main-and-sidequest.json")
+        first, last = fixture_steps(fixture)
+        actual = copy.deepcopy(last["reference_items"])
+        duplicate = copy.deepcopy(next(item for item in actual if item["id"] == "avery-handoff"))
+        duplicate["id"] = "second-avery-handoff"
+        actual.append(duplicate)
+        score = score_fixture(last, first["reference_items"], actual)
+        self.assertTrue(any("handoff matched multiple" in problem for problem in score.problems))
+
     def fixtures(self):
         return sorted(FIXTURES.glob("*.json"))
 

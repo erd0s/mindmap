@@ -7,6 +7,7 @@ import re
 import sqlite3
 import threading
 import time
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,14 +20,11 @@ from .transcripts import read_transcript_batch
 
 VALID_STATES = {"planned", "open", "settled"}
 VALID_KINDS = {"goal", "thread", "decision", "task", "question", "note"}
-MAX_NEW_ITEMS_PER_RECORD = 20
-MAX_ROOT_ITEMS = 4
-MAX_TREE_DEPTH = 10
-MAX_CHECKPOINT_SUMMARY_LENGTH = 500
-MAX_TITLE_LENGTH = 160
-MAX_ITEM_SUMMARY_LENGTH = 1200
-MAX_RESUME_LENGTH = 600
-MAX_RECORD_PAYLOAD_BYTES = 100_000
+from .limits import (
+    MAX_NEW_ITEMS_PER_RECORD, MAX_ROOT_ITEMS, MAX_TREE_DEPTH,
+    MAX_CHECKPOINT_SUMMARY_LENGTH, MAX_TITLE_LENGTH, MAX_ITEM_SUMMARY_LENGTH,
+    MAX_RESUME_LENGTH, MAX_RECORD_PAYLOAD_BYTES, MAX_ID_LENGTH, MIN_SORT_ORDER, MAX_SORT_ORDER,
+)
 CHRONOLOGY_NODE_PATTERN = re.compile(
     r"^(?:message|msg|turn|prompt|response|chat|tool[-_ ]?call|event)[-_ ]*\d+\b",
     re.IGNORECASE,
@@ -130,7 +128,8 @@ def semantic_warnings(
                     "item_id": item_id,
                     "message": (
                         "Planned concept has open or settled child work recorded after "
-                        "its last revision (" + ", ".join(started) + "). Work beneath it "
+                        "its last revision (" + ", ".join(started[:5]) +
+                        (f"; {len(started) - 5} more: retrieve children" if len(started) > 5 else "") + "). Work beneath it "
                         "has begun: set it open or settle it, and rewrite resumes that "
                         "still present that work as future, or explain why it remains "
                         "unstarted."
@@ -370,6 +369,8 @@ class Store:
                 CREATE INDEX IF NOT EXISTS idx_turn_prompts_turn ON turn_prompts(turn_id, id);
                 """
             )
+            from .protocol import install_schema
+            install_schema(connection)
         # executescript commits by design. Acquire a separate immediate write lock
         # before inspecting/upgrading columns so concurrent plugin processes cannot
         # both decide to add the same migration.
@@ -390,6 +391,10 @@ class Store:
             turn_columns = {
                 row["name"] for row in connection.execute("PRAGMA table_info(turns)")
             }
+            if "checkpoint_token" not in turn_columns:
+                connection.execute("ALTER TABLE turns ADD COLUMN checkpoint_token TEXT")
+            connection.execute("""UPDATE turns SET checkpoint_token=lower(hex(randomblob(16)))
+                WHERE checkpointed_at IS NOT NULL AND checkpoint_token IS NULL""")
             if "checkpoint_payload_hash" not in turn_columns:
                 connection.execute("ALTER TABLE turns ADD COLUMN checkpoint_payload_hash TEXT")
             if "tool_activity_generation" not in turn_columns:
@@ -785,7 +790,7 @@ class Store:
                 connection.execute(
                     """
                     UPDATE turns SET checkpointed_at = NULL, checkpoint_summary = NULL,
-                      checkpoint_payload_hash = NULL,
+                      checkpoint_payload_hash = NULL, checkpoint_token = NULL,
                       checkpoint_tool_activity_generation = NULL,
                       last_assistant_message = NULL
                     WHERE id = ?
@@ -815,6 +820,7 @@ class Store:
         session_id: str,
         interaction_id: str | None,
         tool_name: str,
+        tool_payload: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """Advance the active turn's tool generation before a tool executes.
 
@@ -863,6 +869,8 @@ class Store:
                 """,
                 (generation, tool_name[:200], now, turn["id"]),
             )
+            from .protocol import correlate_commit
+            correlate_commit(connection, turn["id"], generation, tool_payload or {})
             return {
                 "interaction_id": turn["interaction_id"],
                 "tool_activity_generation": generation,
@@ -1128,8 +1136,8 @@ class Store:
         item_id = operation.get("id")
         if not isinstance(item_id, str) or not item_id.strip():
             raise MindmapError("Every operation requires a non-empty string id.")
-        if len(item_id) > 100:
-            raise MindmapError("Item ids must be 100 characters or shorter.")
+        if len(item_id) > MAX_ID_LENGTH:
+            raise MindmapError(f"Item ids must be {MAX_ID_LENGTH} characters or shorter.")
         for field in ("title", "summary", "resume"):
             if field in operation and not isinstance(operation[field], str):
                 raise MindmapError(f"{field} must be a string when supplied.")
@@ -1175,7 +1183,7 @@ class Store:
             sort_order = operation["sort_order"]
             if isinstance(sort_order, bool) or not isinstance(sort_order, int):
                 raise MindmapError("sort_order must be an integer when supplied.")
-            if not -(2**31) <= sort_order <= 2**31 - 1:
+            if not MIN_SORT_ORDER <= sort_order <= MAX_SORT_ORDER:
                 raise MindmapError("sort_order must fit within a signed 32-bit integer.")
 
     @staticmethod
@@ -1211,17 +1219,7 @@ class Store:
                         f"Causal branches may be at most {MAX_TREE_DEPTH} concepts deep; compress chronological or over-granular chains."
                     )
 
-    def record(
-        self,
-        root: str | Path,
-        host: str,
-        session_id: str,
-        interaction_id: str,
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        project = self.find_project(root, active_only=True)
-        if not project:
-            raise MindmapError(f"No active Mindmap project contains {canonical_path(root)}.")
+    def validate_payload(self, payload: dict[str, Any]) -> tuple:
         allowed_payload_fields = {"summary", "operations", "concept_model"}
         unknown_payload_fields = sorted(set(payload) - allowed_payload_fields)
         if unknown_payload_fields:
@@ -1264,6 +1262,22 @@ class Store:
             raise MindmapError(
                 f"Record payload must be {MAX_RECORD_PAYLOAD_BYTES} bytes or smaller; compress transcript-scale detail."
             )
+        return summary, operations, concept_model, canonical_payload
+
+    def record(
+        self,
+        root: str | Path,
+        host: str,
+        session_id: str,
+        interaction_id: str,
+        payload: dict[str, Any],
+        *, supersedes: str | None = None, request_token: str | None = None,
+    ) -> dict[str, Any]:
+        project = self.find_project(root, active_only=True)
+        if not project:
+            raise MindmapError(f"No active Mindmap project contains {canonical_path(root)}.")
+        summary, operations, concept_model, canonical_payload = self.validate_payload(payload)
+        operation_ids = [operation["id"].strip() for operation in operations]
         payload_hash = hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
         now = utc_now()
         changed: list[str] = []
@@ -1282,22 +1296,50 @@ class Store:
                 raise MindmapError(f"Session {host}/{session_id} has already ended.")
             already_done = connection.execute(
                 """
-                SELECT checkpointed_at, checkpoint_payload_hash FROM turns
-                WHERE session_pk = ? AND interaction_id = ? AND checkpointed_at IS NOT NULL
+                SELECT * FROM turns
+                WHERE session_pk = ? AND interaction_id = ?
                 """,
                 (session["id"], interaction_id),
             ).fetchone()
-            if already_done:
+            from .protocol import check_request
+            request = None
+            if request_token:
+                request = connection.execute("SELECT * FROM record_requests WHERE token=?", (request_token,)).fetchone()
+                if not request or not already_done or request["turn_id"] != already_done["id"]:
+                    raise MindmapError("Unknown prepared request for this turn.")
+                if self.validate_payload(json.loads(request["payload_json"]))[3] != canonical_payload or request["supersedes"] != supersedes:
+                    raise MindmapError("Prepared request payload or correction token changed.")
+                check_request(connection, request, already_done)
+                if request["checkpoint_token"]:
+                    if request["checkpoint_token"] != already_done["checkpoint_token"] or not already_done["checkpointed_at"]:
+                        raise MindmapError("This request's checkpoint was superseded; prepare again.")
+                    connection.execute("UPDATE turns SET checkpoint_tool_activity_generation=tool_activity_generation WHERE id=?", (already_done["id"],))
+                    return {"project": project["route_path"], "changed": [], "checkpointed": True,
+                            "idempotent_replay": True, "checkpoint_token": already_done["checkpoint_token"]}
+            if supersedes and (not already_done or not already_done["checkpointed_at"] or supersedes != already_done["checkpoint_token"]):
+                raise MindmapError("Checkpoint changed; refresh state and reconcile again.")
+            if already_done and already_done["checkpointed_at"] and not supersedes:
                 if already_done["checkpoint_payload_hash"] != payload_hash:
                     raise MindmapError(
-                        f"Interaction {interaction_id!r} was already checkpointed with a different payload."
+                        f"Interaction {interaction_id!r} was already checkpointed with a different payload. "
+                        f"For a deliberate correction use --supersedes {already_done['checkpoint_token']}."
                     )
                 return {
-                    "project": project["route_path"],
-                    "changed": [],
-                    "checkpointed": True,
-                    "idempotent_replay": True,
+                    "project": project["route_path"], "changed": [], "checkpointed": True,
+                    "idempotent_replay": True, "checkpoint_token": already_done["checkpoint_token"],
+                    "coverage_refreshed": False,
                 }
+            if not request_token and not supersedes and connection.execute(
+                """SELECT 1 FROM events WHERE project_id=? AND session_pk=? AND interaction_id=?
+                   AND event_type='turn.checkpointed' AND substr(idempotency_key,-64)=? LIMIT 1""",
+                (project["id"], session["id"], interaction_id, payload_hash),
+            ).fetchone():
+                # Stop/prompt reopening preserves accepted mutations. A bare
+                # old payload cannot distinguish transport replay from review.
+                # New preparation supplies that intent without changing JSON.
+                raise MindmapError("This payload was already committed before the turn reopened. "
+                                   "Review later work and prepare a new request; identical empty deltas are valid.")
+            checkpoint_token = uuid.uuid4().hex
             existing_ids = {
                 row["item_id"]
                 for row in connection.execute(
@@ -1404,7 +1446,7 @@ class Store:
                         interaction_id=interaction_id,
                         item_id=item_id,
                         idempotency_key=(
-                            f"record:{host}:{session_id}:{interaction_id}:{payload_hash}:{index}"
+                            f"record:{host}:{session_id}:{interaction_id}:{checkpoint_token}:{payload_hash}:{index}"
                         ),
                     )
                     connection.execute(
@@ -1414,7 +1456,7 @@ class Store:
                     changed.append(item_id)
                     continue
                 title = operation.get("title") or (existing["title"] if existing else None)
-                if not title or not isinstance(title, str):
+                if not isinstance(title, str) or not title.strip():
                     raise MindmapError(f"New item {item_id!r} requires a title.")
                 state = "settled" if action == "settle" else operation.get(
                     "state", existing["state"] if existing else "open"
@@ -1492,7 +1534,7 @@ class Store:
                     interaction_id=interaction_id,
                     item_id=item_id,
                     idempotency_key=(
-                        f"record:{host}:{session_id}:{interaction_id}:{payload_hash}:{index}"
+                        f"record:{host}:{session_id}:{interaction_id}:{checkpoint_token}:{payload_hash}:{index}"
                     ),
                 )
                 changed.append(item_id)
@@ -1522,21 +1564,25 @@ class Store:
                     summary.strip(), payload_hash,
                 ),
             )
+            connection.execute("UPDATE turns SET checkpoint_token=? WHERE session_pk=? AND interaction_id=?",
+                               (checkpoint_token, session["id"], interaction_id))
+            if request_token:
+                connection.execute("UPDATE record_requests SET checkpoint_token=? WHERE token=?", (checkpoint_token, request_token))
             self._event(
                 connection,
                 project["id"],
                 "turn.checkpointed",
-                {"summary": summary.strip(), "changed": changed},
+                {"summary": summary.strip(), "changed": changed, "checkpoint_token": checkpoint_token, "supersedes": supersedes},
                 session_pk=session["id"],
                 interaction_id=interaction_id,
                 idempotency_key=(
-                    f"checkpoint:{host}:{session_id}:{interaction_id}:{payload_hash}"
+                    f"checkpoint:{host}:{session_id}:{interaction_id}:{checkpoint_token}:{payload_hash}"
                 ),
             )
             connection.execute(
                 "UPDATE projects SET updated_at = ? WHERE id = ?", (now, project["id"])
             )
-        return {"project": project["route_path"], "changed": changed, "checkpointed": True}
+        return {"project": project["route_path"], "changed": changed, "checkpointed": True, "checkpoint_token": checkpoint_token}
 
     def is_checkpointed(self, host: str, session_id: str, interaction_id: str) -> bool:
         session = self.session(host, session_id)
@@ -1559,6 +1605,7 @@ class Store:
         interaction_id: str,
         reason: str,
         details: dict[str, Any] | None = None,
+        *, expected_token: str | None = None, expected_generation: int | None = None,
     ) -> bool:
         session = self.session(host, session_id)
         if not session:
@@ -1566,18 +1613,22 @@ class Store:
         with self.transaction() as connection:
             turn = connection.execute(
                 """
-                SELECT id, project_id, checkpointed_at, checkpoint_payload_hash
-                FROM turns
+                SELECT * FROM turns
                 WHERE session_pk = ? AND interaction_id = ?
                 """,
                 (session["id"], interaction_id),
             ).fetchone()
             if not turn or not turn["checkpointed_at"]:
                 return False
+            if expected_generation is not None and (
+                turn["checkpoint_token"] != expected_token or
+                turn["tool_activity_generation"] != expected_generation
+            ):
+                return False
             connection.execute(
                 """
                 UPDATE turns SET checkpointed_at = NULL, checkpoint_summary = NULL,
-                  checkpoint_payload_hash = NULL,
+                  checkpoint_payload_hash = NULL, checkpoint_token = NULL,
                   checkpoint_tool_activity_generation = NULL
                 WHERE id = ?
                 """,
@@ -1593,10 +1644,52 @@ class Store:
                 interaction_id=interaction_id,
                 idempotency_key=(
                     f"checkpoint-invalidated:{session['id']}:{interaction_id}:"
-                    f"{reason}:{turn['checkpoint_payload_hash']}"
+                    f"{reason}:{turn['checkpoint_token']}:{turn['checkpoint_payload_hash']}"
                 ),
             )
             return True
+
+    def checkpoint_for_stop(self, host: str, session_id: str, interaction_id: str,
+                            max_legacy_age: float) -> tuple[dict[str, Any] | None, str | None]:
+        """Inspect freshness and invalidate in one transaction with corrections.
+
+        A Stop that waits behind a commit sees its new coverage. In particular,
+        a correlated retry can refresh coverage without changing the receipt.
+        """
+        with self.transaction() as connection:
+            row = connection.execute(
+                """SELECT t.* FROM turns t JOIN sessions s ON s.id=t.session_pk
+                WHERE s.host=? AND s.session_id=? AND t.interaction_id=?""",
+                (host, session_id, interaction_id),
+            ).fetchone()
+            if not row:
+                return None, None
+            turn = dict(row)
+            if not turn["checkpointed_at"]:
+                return turn, None
+            current = int(turn["tool_activity_generation"] or 0)
+            covered = turn["checkpoint_tool_activity_generation"]
+            checkpoint_time = _timestamp(turn["checkpointed_at"])
+            age = (datetime.now(timezone.utc) - checkpoint_time).total_seconds() if checkpoint_time else None
+            reason, details = None, {}
+            if covered is not None and current > int(covered):
+                reason = "post_checkpoint_tool_activity"
+                details = {"checkpoint_generation": covered, "current_generation": current,
+                           "last_tool_name": turn["last_tool_name"]}
+            elif int(covered or 0) == 0 and age is not None and age > max_legacy_age:
+                reason = "long_post_checkpoint_window"
+                details = {"elapsed_seconds": round(age, 3)}
+            if reason:
+                connection.execute("""UPDATE turns SET checkpointed_at=NULL, checkpoint_summary=NULL,
+                    checkpoint_payload_hash=NULL, checkpoint_token=NULL,
+                    checkpoint_tool_activity_generation=NULL WHERE id=?""", (turn["id"],))
+                self._event(connection, turn["project_id"], "turn.checkpoint_invalidated",
+                            {"reason": reason, **details}, session_pk=turn["session_pk"],
+                            interaction_id=interaction_id,
+                            idempotency_key=f"stop-invalidated:{turn['id']}:{turn['checkpoint_token']}:{turn['checkpoint_payload_hash']}")
+                turn.update(checkpointed_at=None, checkpoint_token=None,
+                            checkpoint_tool_activity_generation=None)
+            return turn, reason
 
     def turn(self, host: str, session_id: str, interaction_id: str) -> dict[str, Any] | None:
         session = self.session(host, session_id)

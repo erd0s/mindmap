@@ -12,6 +12,9 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN_ROOT / "lib"))
 os.environ.setdefault("MINDMAP_RUNNER", str(PLUGIN_ROOT / "bin" / "mindmap"))
 
+from mindmap.transport import configure_stdio  # noqa: E402
+configure_stdio()
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--host", required=True, choices=["codex", "claude"])
 args = parser.parse_args()

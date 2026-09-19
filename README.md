@@ -131,6 +131,8 @@ Deleting a node also deletes every descendant from the current map. The desktop 
 
 ## Local data and privacy
 
+Automatic hook context is a bounded selection of the complete stored graph. The injected `read` command retrieves full concepts, revisions, branches and deletion notices in bounded pages; `snapshot` remains an explicit complete export. Checkpoints use a prepared commit command with safe transport retries, and an explicit checkpoint token allows corrective deltas before Stop. See [the protocol](docs/checkpoint-protocol.md) and [local repair qualification](docs/context-checkpoint-repair.md).
+
 SQLite is the source of truth because Mindmap needs atomic checkpoints, safe concurrent agent writes, transcript cursors, retry idempotency, and revision checks. A directory of loose files cannot provide those guarantees without rebuilding a database protocol.
 
 The database defaults to:

@@ -63,16 +63,17 @@
           {
             "key": "handoff",
             "selector": {
-              "all_terms": [
-                "parser",
-                "sidecar"
-              ]
+              "id": "parser-fix-handoff"
             },
             "state": "open",
             "parent_key": "root",
             "resume": "nonempty",
             "resume_forbidden_terms": [
               "nothing has come back"
+            ],
+            "content_required_terms": [
+              "parser",
+              "sidecar"
             ]
           },
           {

@@ -50,13 +50,15 @@ Hook inputs share `session_id`, `cwd`, `transcript_path`, and an event name. Cod
 | Transcript caveat | Format is unstable | File can lag hook execution | Ignore unknown records; use Stop's final-message field |
 | Tool activity | Local function, shell, edit, and MCP paths expose `PreToolUse`; hosted tools may not | Built-in and MCP tools expose `PreToolUse`; prompt id is absent | Count a per-turn generation before each observed tool; snapshot it at record |
 
-The generation check detects work after a checkpoint without waiting for elapsed time. The record command's own `PreToolUse` happens before `record`, so the saved checkpoint includes that generation. Any later observed tool advances the generation and makes Stop request one reconciliation pass. The older 60-second check remains only for turns whose checkpoint generation is zero, which identifies an older hook package or direct record call.
+The generation check detects work after a checkpoint without waiting for elapsed time. An ordinary record includes its own PreToolUse generation. The injected protocol prepares immutable JSON and then executes a registered commit command; repeating that exact foreground command can refresh coverage without duplicating mutations. Every other observed tool still advances the turn generation and requires reconciliation. A deliberate correction names the current checkpoint token with `--supersedes` and can commit before Stop. The 60-second fallback remains only for zero observed coverage. Stop checks and invalidates atomically and allows one recovery pass.
 
 Record JSON travels through a non-interactive pipe or heredoc. The Python
 runtime rejects interactive terminal stdin because canonical pseudo-terminals
 can truncate an input line at 4096 bytes. End-of-turn side effects such as audio,
 clipboard writes, and notifications therefore run before the record command;
 only the final textual response follows it.
+
+Prepared retry correlation supports `Bash`, `exec_command`, and `functions.exec_command` with their ordinary command input fields. The entire command must match the registered command, with no background/TTY option. Other wrappers and bundled shell programs are counted as ordinary activity; a direct `record --supersedes TOKEN` remains available for explicit reconciliation through such a tool, without asserting correlated retry coverage. Host permissions must allow the short bound command as well as payload preparation; previous allow rules for only the old plugin executable do not automatically authorize it.
 
 Tool names differ in practice. In the Claude permission fixture, Claude used Serena's MCP shell executor when built-in `Bash` was denied. Mindmap counted that call because the hook does not assume that shell work always travels through `Bash`. The denial fixture therefore disables external MCP servers as well as built-in shell access; otherwise it tests alternate execution, not an unavailable record path.
 

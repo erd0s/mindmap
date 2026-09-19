@@ -20,6 +20,8 @@ def _root(value: str | None, discover: bool = False) -> Path:
 
 
 def _emit(value: Any, human: str | None = None) -> None:
+    from .diagnostics import emit
+    emit("cli_result", result=value)
     if human and sys.stdout.isatty():
         print(human)
     else:
@@ -45,6 +47,7 @@ def _payload(path: str) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="mindmap", description="Small causal concept trees for coding-agent projects")
+    parser.add_argument("--database", help=argparse.SUPPRESS)
     sub = parser.add_subparsers(dest="command", required=True)
 
     start = sub.add_parser("start", aliases=["activate"], help="Enable persistent tracking")
@@ -74,10 +77,26 @@ def build_parser() -> argparse.ArgumentParser:
 
     record = sub.add_parser("record", help="Atomically change the map and checkpoint a turn")
     record.add_argument("--root")
+    record.add_argument("--supersedes", help="Explicit correction of this checkpoint token")
     record.add_argument("--host", required=True, choices=["codex", "claude", "unknown"])
     record.add_argument("--session-id", required=True)
     record.add_argument("--interaction-id", required=True)
     record.add_argument("--file", default="-", help="JSON payload path, or - for stdin")
+
+    read = sub.add_parser("read", help="Read a bounded page of concepts or notices")
+    read.add_argument("--root")
+    bound = sub.add_parser("bound", help=argparse.SUPPRESS)
+    bound.add_argument("binding")
+    bound.add_argument("action", choices=["prepare", "commit", "record", "read", "state", "transcript", "snapshot", "help"])
+    bound.add_argument("request", nargs="?")
+    bound.add_argument("--file", default="-")
+    bound.add_argument("--supersedes")
+    for command in (read, bound):
+        command.add_argument("--id", dest="item_id")
+        command.add_argument("--parent")
+        command.add_argument("--roots", action="store_true")
+        command.add_argument("--notices", action="store_true")
+        command.add_argument("--cursor")
 
     snapshot = sub.add_parser("snapshot", help="Export a project snapshot")
     snapshot.add_argument("--root")
@@ -89,11 +108,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .transport import configure_stdio
+    configure_stdio()
     args = build_parser().parse_args(argv)
     if args.command == "hook":
         return run_hook(args.host)
     try:
-        store = Store()
+        store = Store(args.database)
         if args.command in {"start", "activate"}:
             project = store.activate(_root(args.root, discover=True))
             _emit(project, f"Mindmap active for {project['root_path']}")
@@ -130,9 +151,50 @@ def main(argv: list[str] | None = None) -> int:
                 args.host,
                 args.session_id,
                 args.interaction_id,
-                _payload(args.file),
+                _payload(args.file), supersedes=args.supersedes,
             )
             _emit(result)
+        elif args.command in {"read", "bound"}:
+            from .protocol import resolve_binding, prepare, commit
+            from .retrieval import read_page, encode
+            if args.command == "bound":
+                with store.read_connection() as db:
+                    bound = resolve_binding(db, args.binding)
+                project_id = bound["project_id"]
+                action = args.action
+            else:
+                project = store.find_project(_root(args.root), active_only=False)
+                if not project:
+                    raise MindmapError("No Mindmap project contains this directory.")
+                project_id, action = project["id"], "read"
+            if action == "read":
+                page = read_page(store, project_id, item_id=args.item_id, parent=args.parent,
+                                 roots=args.roots, notices=args.notices, cursor=args.cursor)
+                output = encode(page)
+                from .diagnostics import emit
+                emit("retrieval", bytes=len(output.encode()) + 1, result=page)
+                print(output)
+            elif action == "prepare":
+                _emit(prepare(store, args.binding, _payload(args.file), args.supersedes))
+            elif action == "commit":
+                _emit(commit(store, args.binding, args.request))
+            elif action == "record":
+                _emit(store.record(bound["root_path"], bound["host"], bound["session_id"],
+                                  bound["interaction_id"], _payload(args.file), supersedes=args.supersedes))
+            elif action == "state":
+                turn = store.turn(bound["host"], bound["session_id"], bound["interaction_id"]) if bound['turn_id'] else None
+                _emit({key: turn.get(key) if turn else None for key in
+                       ("checkpoint_token", "checkpointed_at", "tool_activity_generation", "checkpoint_tool_activity_generation")})
+            elif action == "transcript":
+                if not bound['turn_id']:
+                    raise MindmapError("No prompt identity in this binding.")
+                store.import_transcript(bound["host"], bound["session_id"])
+                print(render_markdown(store.normalized_history(bound["host"], bound["session_id"])))
+            elif action == "snapshot":
+                _emit(store.project_snapshot(project_id))
+            elif action == "help":
+                from .delivery import schema_help
+                print(schema_help())
         elif args.command == "snapshot":
             project = store.find_project(_root(args.root), active_only=False)
             if not project:

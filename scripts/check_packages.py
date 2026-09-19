@@ -24,6 +24,7 @@ def file_digest(path: Path) -> str:
 
 
 def main() -> int:
+    subprocess.run([sys.executable, str(ROOT / "scripts/update_record_limits.py"), "--check"], check=True)
     version_match = re.search(
         r'^version\s*=\s*"([^"]+)"',
         (ROOT / "pyproject.toml").read_text(encoding="utf-8"),

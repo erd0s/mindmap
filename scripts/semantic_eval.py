@@ -12,7 +12,7 @@ from typing import Any
 
 VALID_STATES = {"planned", "open", "settled"}
 VALID_RESUME_EXPECTATIONS = {"empty", "nonempty", "closed"}
-SCORER_VERSION = 5
+SCORER_VERSION = 6
 
 
 @dataclass(frozen=True)
@@ -97,6 +97,13 @@ def _validate_expectations(expected: dict[str, Any]) -> None:
             )
         ):
             raise ValueError(f"expected node {key} requires selector.id or selector.all_terms")
+        fields = selector.get("fields")
+        if fields is not None and (not isinstance(fields, list) or not fields
+                                   or any(not isinstance(field, str) or field not in {"id", "title", "summary", "resume"} for field in fields)):
+            raise ValueError(f"expected node {key} has invalid selector.fields")
+        terms = node.get("content_required_terms", [])
+        if not isinstance(terms, list) or not all(isinstance(term, str) and term for term in terms):
+            raise ValueError(f"expected node {key} has invalid content_required_terms")
         state = node.get("state")
         if state is not None and state not in VALID_STATES:
             raise ValueError(f"expected node {key} has invalid state {state!r}")
@@ -132,10 +139,10 @@ def fixture_steps(fixture: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def _searchable(item: dict[str, Any]) -> str:
+def _searchable(item: dict[str, Any], fields: tuple | list = ("id", "title", "summary", "resume")) -> str:
     return " ".join(
         str(item.get(field) or "")
-        for field in ("id", "title", "summary", "resume")
+        for field in fields
     ).casefold()
 
 
@@ -143,7 +150,8 @@ def _match(selector: dict[str, Any], items: list[dict[str, Any]]) -> list[dict[s
     if isinstance(selector.get("id"), str):
         return [item for item in items if item.get("id") == selector["id"]]
     terms = [term.casefold() for term in selector["all_terms"]]
-    return [item for item in items if all(term in _searchable(item) for term in terms)]
+    fields = selector.get("fields", ("id", "title", "summary", "resume"))
+    return [item for item in items if all(term in _searchable(item, fields) for term in terms)]
 
 
 def _resume_satisfies(expectation: str, value: str) -> bool:
@@ -237,6 +245,9 @@ def score_fixture(
         if item_id is None:
             continue
         item = after[item_id]
+        for term in specification.get("content_required_terms", []):
+            if term.casefold() not in _searchable(item):
+                problems.append(f"concept {key} lacks required content term {term!r}")
         transition_ok = True
         if "from_state" in specification:
             transition_total += 1
@@ -361,9 +372,9 @@ def seed_items(fixture: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "id": operation["id"],
                 "parent_id": operation.get("parent_id"),
-                "title": operation["title"],
-                "summary": operation.get("summary", ""),
-                "resume": operation.get("resume", ""),
+                "title": operation["title"].strip(),
+                "summary": operation.get("summary", "").strip(),
+                "resume": operation.get("resume", "").strip(),
                 "state": operation.get("state", "open"),
                 "kind": operation.get("kind", "thread"),
                 "revision": 1,
