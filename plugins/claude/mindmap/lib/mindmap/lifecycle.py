@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shlex
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -106,7 +107,8 @@ def _checkpoint_header(store: Store, project: dict[str, Any], host: str, session
              '"kind":"goal|thread|decision|task|question|note","parent_id":null,"expected_revision":2}]}')
     contract = (shape + "\n" + limits_line() + "\n"
                 'Existing IDs require exact expected_revision; new IDs omit it. Empty operations is valid. '
-                'Omitted fields stay unchanged; clear resume with "resume":"". Use "restore":true only for explicit restoration of USER-DELETED BRANCHES.')
+                'Omitted fields stay unchanged; clear resume with "resume":"". Use "restore":true only for explicit restoration of USER-DELETED BRANCHES. '
+                'After reopening, an old payload fails: use a new truthful summary for an empty delta.')
     prefix = "MINDMAP_ACTIVE_V1\n" + identity + "\nFinal tool: pipe JSON to this exact checkpoint command:\n" + record + "\n" + contract
     if wire_size(prefix) > 1900 and turn:
         ref = str(turn["id"])
@@ -435,7 +437,9 @@ def run_hook_payload(host: str, payload: Any) -> int:
             raise MindmapError("Hook input must be a JSON object.")
         output = handle_hook(host, payload)
         if output is not None:
-            print(json.dumps(output, separators=(",", ":"), ensure_ascii=False))
+            # The budget measures UTF-8 bytes. Bypass locale-dependent text
+            # encoding so Unicode context survives non-UTF-8 host stdout.
+            sys.stdout.buffer.write((json.dumps(output, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8"))
         return 0
     except Exception as exc:
         # Hooks must fail open: a tracking problem should never strand the coding session.

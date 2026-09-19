@@ -1310,6 +1310,12 @@ class Store:
                 (f"checkpoint:{host}:{session_id}:{interaction_id}:{payload_hash}", session["id"], interaction_id, project["id"]),
             ).fetchone()
             if receipt or (already_done and already_done["checkpoint_payload_hash"] == payload_hash):
+                if not already_done:
+                    raise MindmapError(
+                        "This exact payload was already committed and cannot acknowledge later work. "
+                        "The turn remains uncheckpointed. Review the work and submit a new delta; "
+                        "for empty operations, use a new truthful summary."
+                    )
                 return {
                     "project": project["route_path"], "changed": [],
                     "checkpointed": bool(already_done), "idempotent_replay": True,

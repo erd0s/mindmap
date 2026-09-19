@@ -10,6 +10,7 @@ SESSION_CONTEXT_BYTES = 8192
 STOP_CONTEXT_BYTES = 3072
 # Budgets include JSON escaping on the wire, not just Python character counts.
 ENVELOPE_RESERVE = 128
+MAX_AUTOMATIC_WARNINGS = 5
 
 
 def wire_size(text: str) -> int:
@@ -40,13 +41,15 @@ def automatic_map(snapshot: dict[str, Any], budget: int, focus: str = "") -> str
     from .store import MAX_ROOT_ITEMS, MAX_TREE_DEPTH, MAX_TITLE_LENGTH
 
     items = snapshot["items"]
+    warnings = snapshot["semantic_warnings"]
+    warned_ids = {warning["item_id"] for warning in warnings}
     children = {item["parent_id"] for item in items}
     words = set(re.findall(r"\w{3,}", focus.casefold()))
 
     def priority(item: dict[str, Any]) -> tuple:
         text = " ".join(str(item.get(k) or "") for k in ("title", "summary", "resume"))
         matches = len(words.intersection(re.findall(r"\w{3,}", text.casefold())))
-        return (item["state"] != "settled", matches, item["id"] not in children,
+        return (item["id"] in warned_ids, item["state"] != "settled", matches, item["id"] not in children,
                 item["updated_at"], item["id"])
 
     roots = sum(item["parent_id"] is None for item in items)
@@ -73,18 +76,32 @@ def automatic_map(snapshot: dict[str, Any], budget: int, focus: str = "") -> str
         preface.append("LEGACY MAP OUTSIDE COMPRESSION BOUNDS: do not expand; retrieve the snapshot and reconcile first.")
     # Counts precede optional rows, so even a further host preview cannot make
     # the selected sample look complete. No graph mutations occur here.
-    warnings = snapshot["semantic_warnings"]
     deleted = snapshot["user_deleted_branches"]
+    shown_warnings: list[str] = []
     chosen: list[str] = []
 
     def render(count: int) -> str:
         return "\n".join([
             *preface,
             f"Concepts shown: {count}/{len(items)}; omitted: {len(items)-count}. "
-            f"Warning details omitted: {len(warnings)}; user-deleted details omitted: {len(deleted)}.",
+            f"Warnings shown: {len(shown_warnings)}/{len(warnings)}; "
+            f"Warning details omitted: {len(warnings)-len(shown_warnings)}; user-deleted details omitted: {len(deleted)}.",
             "Do not recreate user-deleted concepts without an explicit user request and restore:true.",
+            *shown_warnings,
             *chosen,
         ])
+
+    # Preserve the advisory warning's exact code and concept identity before
+    # spending remaining space on optional graph rows. Never truncate an ID.
+    for warning in warnings:
+        if len(shown_warnings) >= MAX_AUTOMATIC_WARNINGS:
+            break
+        shown_warnings.append("SEMANTIC WARNING: " + json.dumps(
+            {key: warning[key] for key in ("code", "item_id")},
+            ensure_ascii=False, separators=(",", ":"),
+        ))
+        if wire_size(render(0)) > budget:
+            shown_warnings.pop()
 
     for item in sorted(items, key=priority, reverse=True):
         # Keep exact identity/revision/parent/state; bound only optional prose.

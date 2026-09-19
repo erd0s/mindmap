@@ -209,15 +209,14 @@ class CheckpointContextTests(unittest.TestCase):
         initial = self.seed()
         self.work()
         self.assertEqual(self.hook(event="Stop")["decision"], "block")
-        result = self.record(initial)
-        self.assertTrue(result["idempotent_replay"])
-        self.assertFalse(result["checkpointed"])
-        self.assertTrue(result["post_checkpoint_work_pending"])
+        with self.assertRaisesRegex(MindmapError, "already committed.*new truthful summary"):
+            self.record(initial)
         self.assertFalse(self.store.is_checkpointed("codex", "session", "first"))
         self.record(self.correction())
         self.hook(prompt="Also verify the separate acceptance.")
-        result = self.record(self.correction())
-        self.assertFalse(result["checkpointed"])
+        with self.assertRaisesRegex(MindmapError, "already committed.*new truthful summary"):
+            self.record(self.correction())
+        self.assertFalse(self.store.is_checkpointed("codex", "session", "first"))
         self.assertEqual(self.store.project_snapshot(self.project["id"])["items"][0]["revision"], 2)
 
     def test_own_pretool_advances_raw_counter_only(self):
@@ -416,6 +415,160 @@ class CheckpointContextTests(unittest.TestCase):
         with self.assertRaisesRegex(MindmapError, "bytes or smaller"):
             self.record(payload, turn="over-boundary")
 
+    def test_supported_hosts_use_bash_command_string_for_pretool(self):
+        # Codex 0.155 normalizes exec_command.cmd to Bash/command at its hook
+        # boundary; Claude passes Bash's command object. Native call-log tool
+        # names are not evidence of the hook-facing name.
+        for host in ("codex", "claude"):
+            self.hook(host, session=host)
+            first = {"summary": "No map change", "operations": []}
+            self.record(first, host, host)
+            payload = {"cwd": str(self.root), "session_id": host, "turn_id": "first",
+                       "hook_event_name": "PreToolUse", "tool_name": "Bash",
+                       "tool_input": {"command": self.command(host, host)}}
+            for _ in range(3):
+                note_pre_tool_activity(host, payload)
+                with self.assertRaisesRegex(MindmapError, "different payload"):
+                    self.record({"summary": "Conflicting attempt", "operations": []}, host, host)
+            self.assertIsNone(self.hook(host, "Stop", host))
+            # The supported ordinary shell string establishes intervening work.
+            payload["tool_input"] = {"command": "git status --short"}
+            note_pre_tool_activity(host, payload)
+            self.record({"summary": "Reviewed subsequent work", "operations": []}, host, host)
+            self.assertIsNone(self.hook(host, "Stop", host))
+            # Unverified list-form shells stay conservative. They cannot
+            # manufacture correction permission from repeated attempts.
+            payload["tool_input"] = {"command": ["bash", "-lc", self.command(host, host)]}
+            for _ in range(3):
+                note_pre_tool_activity(host, payload)
+                with self.assertRaisesRegex(MindmapError, "different payload"):
+                    self.record({"summary": "Another conflicting attempt", "operations": []}, host, host)
+
+    def packaged_environment(self, **extra):
+        return {"HOME": str(self.home), "PATH": os.defpath, "MINDMAP_PYTHON": sys.executable,
+                "MINDMAP_HOME_DIR": str(self.home), "MINDMAP_DATA_DIR": str(self.base / "data"),
+                "MINDMAP_TRACKING": "on", **extra}
+
+    def packaged_hook(self, host, event, *, environment=None, **extra):
+        package = ROOT / ("plugins/mindmap" if host == "codex" else "plugins/claude/mindmap")
+        payload = {"cwd": str(self.root), "session_id": host, "turn_id": "current", "prompt_id": "current",
+                   "hook_event_name": event, "prompt": "Continue verification.", "stop_hook_active": False, **extra}
+        result = subprocess.run([str(package / "scripts/run_hook.sh"), "--host", host],
+                                input=json.dumps(payload).encode("utf-8"), capture_output=True,
+                                env=environment or self.packaged_environment(), timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(result.stderr, result.stderr)
+        limit = STOP_CONTEXT_BYTES if event == "Stop" else PROMPT_CONTEXT_BYTES
+        self.assertLessEqual(len(result.stdout), limit)
+        return json.loads(result.stdout.decode("utf-8")) if result.stdout else None
+
+    def test_packaged_cli_refuses_stale_empty_replay_after_stop_and_new_prompt(self):
+        for host in ("codex", "claude"):
+            with self.subTest(host=host):
+                self.packaged_hook(host, "UserPromptSubmit")
+                ref = self.store.turn(host, host, "current")["id"]
+                package = ROOT / ("plugins/mindmap" if host == "codex" else "plugins/claude/mindmap")
+                payload = {"summary": "No map change", "operations": []}
+                def record(value):
+                    return subprocess.run([str(package / "bin/mindmap"), "record", "--turn-ref", str(ref)],
+                                          input=json.dumps(value).encode(), capture_output=True,
+                                          env=self.packaged_environment(), timeout=10)
+                self.assertEqual(record(payload).returncode, 0)
+                self.packaged_hook(host, "PreToolUse", tool_name="apply_patch", tool_input={})
+                stop = self.packaged_hook(host, "Stop")
+                self.assertEqual(stop["decision"], "block")
+                self.assertIn("new truthful summary", stop["reason"])
+                before = self.store.turn(host, host, "current")
+                retry = record(payload)
+                self.assertEqual(retry.returncode, 2)
+                self.assertFalse(retry.stdout)
+                self.assertIn(b"already committed", retry.stderr)
+                self.assertIn(b"new truthful summary", retry.stderr)
+                self.assertEqual(self.store.turn(host, host, "current"), before)
+                payload = {"summary": "Reconciled later work; no map change", "operations": []}
+                self.assertTrue(json.loads(record(payload).stdout)["checkpointed"])
+                self.assertIsNone(self.packaged_hook(host, "Stop", stop_hook_active=True))
+                self.packaged_hook(host, "UserPromptSubmit", prompt="Check one more acceptance.")
+                retry = record(payload)
+                self.assertEqual(retry.returncode, 2)
+                self.assertFalse(self.store.is_checkpointed(host, host, "current"))
+                self.assertIn("new truthful summary", self.packaged_hook(host, "Stop")["reason"])
+                payload["summary"] = "Reviewed the added acceptance; no map change"
+                self.assertTrue(json.loads(record(payload).stdout)["checkpointed"])
+                self.assertIsNone(self.packaged_hook(host, "Stop", stop_hook_active=True))
+
+    def warning_graph(self):
+        self.seed()
+        with patch("mindmap.store.utc_now", return_value="2025-01-01T00:00:00.000+00:00"):
+            self.record({"summary": "Synthetic warning cases", "operations": [
+                {"op": "upsert", "id": "root", "expected_revision": 1, "summary": "This project is superseded by a different approach."},
+                {"op": "upsert", "id": "phase", "title": "Validate phase", "parent_id": "root", "state": "planned"},
+                {"op": "upsert", "id": "closed", "title": "Completed deliverable", "parent_id": "root", "state": "settled", "resume": "Verify remaining work."},
+                {"op": "upsert", "id": "contradiction", "title": "Acceptance", "parent_id": "root", "state": "open", "summary": "This work is complete."},
+                {"op": "upsert", "id": "reopened", "title": "Reopened decision", "parent_id": "root", "state": "settled"},
+            ]}, turn="warning-seed")
+        with patch("mindmap.store.utc_now", return_value="2025-01-01T00:00:01.000+00:00"):
+            self.record({"summary": "Later synthetic work", "operations": [
+                {"op": "upsert", "id": "child", "title": "Started work", "state": "open", "parent_id": "phase"},
+                {"op": "upsert", "id": "reopened", "expected_revision": 1, "state": "open"},
+            ]}, turn="warning-later")
+
+    def test_specific_warnings_survive_both_hooks_on_small_and_large_maps(self):
+        self.warning_graph()
+        expected = {(warning["code"], warning["item_id"]) for warning in self.store.project_snapshot(self.project["id"])["semantic_warnings"]}
+        self.assertEqual({code for code, _ in expected}, {"planned_parent_after_child_activity", "settled_action_resume",
+                                                       "state_summary_contradiction", "superseded_root_frontier", "reversion_without_context"})
+        for large in (False, True):
+            if large:
+                for batch in range(6):
+                    self.record({"summary": "Add unrelated settled context", "operations": [
+                        {"op": "upsert", "id": f"settled-{batch}-{i}", "title": "Retained context", "parent_id": "root", "state": "settled", "summary": "界" * 1000}
+                        for i in range(20)
+                    ]}, turn=f"extra-{batch}")
+            before = self.store.project_snapshot(self.project["id"])["items"]
+            for host in ("codex", "claude"):
+                for event in ("UserPromptSubmit", "SessionStart"):
+                    context = self.packaged_hook(host, event)["hookSpecificOutput"]["additionalContext"]
+                    actual = {tuple(json.loads(line.removeprefix("SEMANTIC WARNING: "))[key] for key in ("code", "item_id"))
+                              for line in context.splitlines() if line.startswith("SEMANTIC WARNING: ")}
+                    self.assertEqual(actual, expected)
+                    self.assertIn("Warning details omitted: 0", context)
+                    rows = [json.loads(line) for line in context.splitlines() if line.startswith('{"id":')]
+                    self.assertTrue(rows)
+                    self.assertIn(rows[0]["id"], {item_id for _, item_id in expected})
+            self.assertEqual(self.store.project_snapshot(self.project["id"])["items"], before)
+
+    def test_many_warnings_are_capped_and_omission_count_is_exact(self):
+        self.seed()
+        self.record({"summary": "Synthetic contradictions", "operations": [
+            {"op": "upsert", "id": f"contradiction-{i}", "title": "Acceptance", "parent_id": "root", "state": "open", "summary": "This work is complete."}
+            for i in range(20)
+        ]}, turn="many-warnings")
+        for host in ("codex", "claude"):
+            context = self.packaged_hook(host, "UserPromptSubmit")["hookSpecificOutput"]["additionalContext"]
+            self.assertEqual(context.count("SEMANTIC WARNING: "), 5)
+            self.assertIn("Warnings shown: 5/20; Warning details omitted: 15", context)
+
+    def test_packaged_hook_stdout_is_utf8_independent_of_locale(self):
+        self.seed()
+        self.record({"summary": "Unicode context", "operations": [
+            {"op": "upsert", "id": "root", "expected_revision": 1, "title": "漢字 — 🚀", "summary": "x" * 400},
+        ]}, turn="unicode")
+        before = self.store.project_snapshot(self.project["id"])["items"]
+        for host in ("codex", "claude"):
+            for extra in ({"LC_ALL": "en_US.ISO8859-1", "LANG": "en_US.ISO8859-1"},
+                          {"PYTHONIOENCODING": "cp1252"}, {"PYTHONIOENCODING": "ascii"}):
+                with self.subTest(host=host, encoding=extra):
+                    environment = self.packaged_environment(**extra)
+                    for event in ("UserPromptSubmit", "SessionStart"):
+                        output = self.packaged_hook(host, event, environment=environment)
+                        context = output["hookSpecificOutput"]["additionalContext"]
+                        self.assertIn("漢字 — 🚀", context)
+                        self.assertIn("… [preview]", context)
+                    stop = self.packaged_hook(host, "Stop", environment=environment)
+                    self.assertEqual(stop["decision"], "block")
+        self.assertEqual(self.store.project_snapshot(self.project["id"])["items"], before)
+
     def test_both_packaged_wrappers_preview_record_replay_correction_and_retrieval(self):
         self.large_graph()
         for host, relative in (("codex", "plugins/mindmap"), ("claude", "plugins/claude/mindmap")):
@@ -439,7 +592,7 @@ class CheckpointContextTests(unittest.TestCase):
             command = shlex.join([runner, "record", "--turn-ref", str(ref), "--file", "-"])
             def record(value):
                 shell = command + " <<'JSON'\n" + json.dumps(value) + "\nJSON"
-                hook("PreToolUse", tool_name="Bash" if host == "claude" else "functions.exec_command", tool_input={"command": shell})
+                hook("PreToolUse", tool_name="Bash", tool_input={"command": shell})
                 return subprocess.run(["/bin/sh", "-c", shell], capture_output=True, text=True, env=environment, timeout=10)
             first = {"summary": "No semantic changes", "operations": []}
             self.assertEqual(record(first).returncode, 0)
