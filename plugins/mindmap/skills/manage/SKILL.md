@@ -13,7 +13,9 @@ Never activate it implicitly. The user must invoke this skill with exactly one a
 
 ## Use the injected runtime context
 
-Look first for `MINDMAP_ACTIVE_V1` in the current context. Lifecycle hooks put the exact project root, session id, interaction id, transcript command, and atomic record command there. Use those commands exactly; they avoid ambiguity when several tabs are working in the same directory.
+Look first for `MINDMAP_ACTIVE_V1` in the current context. Lifecycle hooks put the exact project root, session id, interaction id, transcript command, and atomic record command there. Use those commands exactly; they avoid ambiguity when several tabs are working in the same directory. Long identities use an exact local `--turn-ref` instead. It refers to the current Mindmap database, not a portable identity; use the injected `identity` command to retrieve its full host, session, interaction and root.
+
+Automatic context is a bounded partial view. It reports omitted concepts and previews long prose; missing rows are not deleted concepts, and an omitted parent row does not make a child a root. Retrieve the full snapshot before editing an omitted concept, checking relationships, restoring a deleted branch, or giving a complete status playback. Do not overwrite full summaries or resumes with their previews. The injected `schema` command gives the complete record contract and numeric limits from the validator.
 
 If no runtime context was injected, find `mindmap` on `PATH`. In a packaged plugin the fallback executable is also available at `../../bin/mindmap` relative to this skill directory. A fallback command is valid only in the agent session's existing working directory: never use `cd`, change a tool call's workdir, or substitute a guessed parent or child project directory. For `start`, run `mindmap start --root "$PWD"`. If it succeeds, report activation once and explain that transcript backfill begins on the next hook event. If it fails, or injected context contains `MINDMAP_ACTIVATION_BLOCKED_V1`, do not retry from another directory and do not claim activation, tracking, checkpointing, or future backfill; explain that the user must start a new agent session inside the intended project directory and invoke `start` there. For `status`, run `mindmap snapshot --root "$PWD"` and give a read-only playback of its project and items. For `stop`, run `mindmap stop --root "$PWD"`. A fallback `sync` requires a later hooked turn, so ask the user to invoke sync again after the plugin hooks are loaded.
 
@@ -84,9 +86,9 @@ Capture plans the user or agent explicitly stated even when nobody has begun the
 
 ## Checkpoint every active turn
 
-After all work and immediately before the final response of every active turn, use the exact injected record command. Make it the final tool action, not merely the final implementation action. Complete every side effect first, including audio, clipboard, notifications, cleanup, and status checks. If another instruction puts a side effect after the checkpoint, preserve the side effect but move it immediately before the record. After the record succeeds, send the final response without calling another tool.
+After all work and after joining any concurrent tools, immediately before the final response of every active turn, use the exact injected record command. Make it the final tool action, not merely the final implementation action. Complete every side effect first, including audio, clipboard, notifications, cleanup, and status checks. If another instruction puts a side effect after the checkpoint, preserve the side effect but move it immediately before the record. After the record succeeds, send the final response without calling another tool.
 
-Supply the JSON through a non-interactive pipe or heredoc in the same tool call as the record command. Never start the command with a TTY or stream the JSON through interactive stdin or `write_stdin`: canonical terminals can truncate input at 4096 bytes. The record CLI rejects interactive TTY stdin. Use `--file PATH` only when a safe, task-scoped payload file already exists; do not create durable checkpoint scratch files. The command accepts one JSON object:
+Supply the JSON through a literal non-interactive `printf` pipe or quoted heredoc in the same tool call as the record command. Never start the command with a TTY or stream the JSON through interactive stdin or `write_stdin`: canonical terminals can truncate input at 4096 bytes. The record CLI rejects interactive TTY stdin. Use `--file PATH` only when a safe, task-scoped payload file already exists; do not create durable checkpoint scratch files. The command accepts one JSON object:
 
 ```json
 {
@@ -110,7 +112,9 @@ Supply the JSON through a non-interactive pipe or heredoc in the same tool call 
 
 Include `concept_model` when the injected context says `LEGACY_MAP_RECONCILIATION_REQUIRED_V2`, after you have read both transcript and snapshot and reconciled the old map. Omit it on ordinary later checkpoints.
 
-Use `op: "settle"` with an existing `id` to close an item. If the turn genuinely changes nothing, record `{"summary":"No map change; answered a status question.","operations":[]}`. The record operation is transactional and idempotent for a host/session/interaction, so never bypass it with direct database edits.
+Use `op: "settle"` with an existing `id` to close an item. If the turn genuinely changes nothing, record `{"summary":"No map change; answered a status question.","operations":[]}`. The record operation is transactional. An exact previously committed payload is an idempotent replay: it never reapplies mutations or acknowledges later work, even if Stop or a later prompt reopened the interaction. Never bypass it with direct database edits.
+
+If tools ran after a successful checkpoint, re-read any affected revisions and submit a deliberate corrective delta before Stop. A different payload is accepted only after observed intervening work; the checkpoint command's own tool event and repeated failed checkpoint attempts do not grant that permission. If the work changed no concepts, use empty operations with a new truthful summary. A failed delta preserves the previous checkpoint and graph. Keep the record invocation separate from other work: compound or opaque shell commands cannot establish correction permission and may require the bounded Stop recovery pass.
 
 Use `op: "remove"`, an existing `id`, and its `expected_revision` only to eliminate a duplicate or wrongly granular node. If it has children, also supply `reparent_to` with another concept id, or `null` only when those children are genuinely independent roots.
 

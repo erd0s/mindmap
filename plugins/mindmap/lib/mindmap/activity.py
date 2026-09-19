@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .checkpoint_tools import checkpoint_tool_kind
+
 
 def _database_path() -> Path:
     override = os.environ.get("MINDMAP_DATA_DIR")
@@ -45,9 +47,9 @@ def note_pre_tool_activity(host: str, payload: dict[str, Any]) -> None:
     with closing(sqlite3.connect(database, timeout=10)) as connection, connection:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 10000")
-        project_id = next(
+        project = next(
             (
-                row["id"]
+                row
                 for row in connection.execute(
                     "SELECT id, root_path FROM projects WHERE active = 1 ORDER BY length(root_path) DESC"
                 )
@@ -55,7 +57,7 @@ def note_pre_tool_activity(host: str, payload: dict[str, Any]) -> None:
             ),
             None,
         )
-        if project_id is None:
+        if project is None:
             return
         connection.execute("BEGIN IMMEDIATE")
         session = connection.execute(
@@ -63,30 +65,55 @@ def note_pre_tool_activity(host: str, payload: dict[str, Any]) -> None:
             SELECT id FROM sessions
             WHERE project_id = ? AND host = ? AND session_id = ?
             """,
-            (project_id, host, session_id),
+            (project["id"], host, session_id),
         ).fetchone()
         if not session:
             return
         if interaction_id:
             turn = connection.execute(
-                "SELECT id FROM turns WHERE session_pk = ? AND interaction_id = ?",
+                "SELECT id, interaction_id FROM turns WHERE session_pk = ? AND interaction_id = ?",
                 (session["id"], interaction_id),
             ).fetchone()
         else:
             turn = connection.execute(
-                "SELECT id FROM turns WHERE session_pk = ? ORDER BY id DESC LIMIT 1",
+                "SELECT id, interaction_id FROM turns WHERE session_pk = ? ORDER BY id DESC LIMIT 1",
                 (session["id"],),
             ).fetchone()
         if not turn:
             return
+        kind = checkpoint_tool_kind(payload, host=host, session_id=session_id,
+                                    interaction_id=turn["interaction_id"], turn_pk=turn["id"],
+                                    root=project["root_path"])
+        advance_tool_activity(connection, turn["id"], tool_name, now, kind)
+
+
+def advance_tool_activity(connection, turn_pk: int, tool_name: str, now: str, kind: str) -> None:
+    # Ambiguous record commands still make Stop stale, but repeated attempts
+    # cannot manufacture the intervening-work authorization for a correction.
+    try:
         connection.execute(
             """
-            UPDATE turns
-            SET tool_activity_generation = tool_activity_generation + 1,
-                last_tool_name = ?, last_tool_at = ?
-            WHERE id = ?
-            """,
-            (tool_name, now, turn["id"]),
+            UPDATE turns SET tool_activity_generation = tool_activity_generation + 1,
+              classified_tool_activity_generation = tool_activity_generation + 1,
+              last_non_record_tool_generation = CASE WHEN ? = 'work'
+                THEN tool_activity_generation + 1 ELSE last_non_record_tool_generation END,
+              last_effective_tool_generation = CASE WHEN ? <> 'record'
+                THEN tool_activity_generation + 1
+                WHEN tool_activity_generation > classified_tool_activity_generation
+                THEN tool_activity_generation ELSE last_effective_tool_generation END,
+              last_tool_name = CASE WHEN ? <> 'record' THEN ? ELSE last_tool_name END,
+              last_tool_at = CASE WHEN ? <> 'record' THEN ? ELSE last_tool_at END WHERE id = ?
+            """, (kind, kind, kind, tool_name[:200], kind, now, turn_pk),
+        )
+    except sqlite3.OperationalError as exc:
+        if not any(f"no such column: {name}" in str(exc) for name in ("last_non_record_tool_generation", "last_effective_tool_generation", "classified_tool_activity_generation")):
+            raise
+        # A hot-updated hook may run before the next full lifecycle migration.
+        # Preserve finality on old schemas; migration treats old activity as
+        # unclassified rather than inventing corrective-record authorization.
+        connection.execute(
+            "UPDATE turns SET tool_activity_generation=tool_activity_generation+1, "
+            "last_tool_name=?, last_tool_at=? WHERE id=?", (tool_name[:200], now, turn_pk),
         )
 
 

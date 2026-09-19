@@ -69,7 +69,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertIn('send "resume":"" explicitly', context)
         self.assertIn("Do not add a child that only restates the symptom", context)
         self.assertIn("preserve a distinct side quest", context)
-        self.assertIn("non-interactive pipe or heredoc", context)
+        self.assertIn("non-interactive literal pipe or quoted heredoc", context)
         self.assertIn("Never start it with a TTY", context)
         self.assertIn("including audio, clipboard, notifications", context)
         self.assertIn("send the final response without calling another tool", context)
@@ -194,11 +194,11 @@ class LifecycleTests(unittest.TestCase):
         context = output["hookSpecificOutput"]["additionalContext"]
         self.assertIn("FRONTIER:", context)
         self.assertIn(
-            "[delivery-reliability] Improve webhook delivery reliability (open)",
+            '"id":"delivery-reliability"',
             context,
         )
         self.assertIn(
-            "Resume: Continue by choosing and documenting a concrete retry policy.",
+            '"resume":"Continue by choosing and documenting a concrete retry policy."',
             context,
         )
         self.assertIn("parent it to the frontier it grew from", context)

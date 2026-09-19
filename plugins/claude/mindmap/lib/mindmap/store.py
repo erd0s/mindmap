@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
+from .activity import advance_tool_activity
+from .checkpoint_tools import checkpoint_tool_kind
 from .errors import MindmapError, RouteCollisionError
 from .paths import canonical_path, database_path, is_within, route_for_root
 from .transcripts import read_transcript_batch
@@ -23,6 +25,7 @@ MAX_NEW_ITEMS_PER_RECORD = 20
 MAX_ROOT_ITEMS = 4
 MAX_TREE_DEPTH = 10
 MAX_CHECKPOINT_SUMMARY_LENGTH = 500
+MAX_ITEM_ID_LENGTH = 100
 MAX_TITLE_LENGTH = 160
 MAX_ITEM_SUMMARY_LENGTH = 1200
 MAX_RESUME_LENGTH = 600
@@ -400,6 +403,21 @@ class Store:
                 connection.execute(
                     "ALTER TABLE turns ADD COLUMN checkpoint_tool_activity_generation INTEGER"
                 )
+            if "last_non_record_tool_generation" not in turn_columns:
+                connection.execute(
+                    "ALTER TABLE turns ADD COLUMN last_non_record_tool_generation INTEGER NOT NULL DEFAULT 0"
+                )
+                connection.execute("UPDATE turns SET last_non_record_tool_generation = coalesce(checkpoint_tool_activity_generation, 0)")
+            if "last_effective_tool_generation" not in turn_columns:
+                connection.execute(
+                    "ALTER TABLE turns ADD COLUMN last_effective_tool_generation INTEGER NOT NULL DEFAULT 0"
+                )
+                connection.execute("UPDATE turns SET last_effective_tool_generation = tool_activity_generation")
+            if "classified_tool_activity_generation" not in turn_columns:
+                connection.execute(
+                    "ALTER TABLE turns ADD COLUMN classified_tool_activity_generation INTEGER NOT NULL DEFAULT 0"
+                )
+                connection.execute("UPDATE turns SET classified_tool_activity_generation = tool_activity_generation")
             if "last_tool_name" not in turn_columns:
                 connection.execute("ALTER TABLE turns ADD COLUMN last_tool_name TEXT")
             if "last_tool_at" not in turn_columns:
@@ -815,6 +833,7 @@ class Store:
         session_id: str,
         interaction_id: str | None,
         tool_name: str,
+        payload: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """Advance the active turn's tool generation before a tool executes.
 
@@ -854,18 +873,13 @@ class Store:
                 ).fetchone()
             if not turn:
                 return None
-            generation = int(turn["tool_activity_generation"] or 0) + 1
-            connection.execute(
-                """
-                UPDATE turns
-                SET tool_activity_generation = ?, last_tool_name = ?, last_tool_at = ?
-                WHERE id = ?
-                """,
-                (generation, tool_name[:200], now, turn["id"]),
-            )
+            root = connection.execute("SELECT root_path FROM projects WHERE id = ?", (project_id,)).fetchone()[0]
+            kind = checkpoint_tool_kind(payload or {}, host=host, session_id=session_id,
+                                        interaction_id=turn["interaction_id"], turn_pk=turn["id"], root=root)
+            advance_tool_activity(connection, turn["id"], tool_name, now, kind)
             return {
                 "interaction_id": turn["interaction_id"],
-                "tool_activity_generation": generation,
+                "tool_activity_generation": int(turn["tool_activity_generation"] or 0) + 1,
             }
 
     def turn_prompts(
@@ -1128,8 +1142,8 @@ class Store:
         item_id = operation.get("id")
         if not isinstance(item_id, str) or not item_id.strip():
             raise MindmapError("Every operation requires a non-empty string id.")
-        if len(item_id) > 100:
-            raise MindmapError("Item ids must be 100 characters or shorter.")
+        if len(item_id) > MAX_ITEM_ID_LENGTH:
+            raise MindmapError(f"Item ids must be {MAX_ITEM_ID_LENGTH} characters or shorter.")
         for field in ("title", "summary", "resume"):
             if field in operation and not isinstance(operation[field], str):
                 raise MindmapError(f"{field} must be a string when supplied.")
@@ -1282,22 +1296,39 @@ class Store:
                 raise MindmapError(f"Session {host}/{session_id} has already ended.")
             already_done = connection.execute(
                 """
-                SELECT checkpointed_at, checkpoint_payload_hash FROM turns
+                SELECT checkpointed_at, checkpoint_payload_hash, checkpoint_tool_activity_generation,
+                       tool_activity_generation, last_non_record_tool_generation, last_effective_tool_generation, classified_tool_activity_generation FROM turns
                 WHERE session_pk = ? AND interaction_id = ? AND checkpointed_at IS NOT NULL
                 """,
                 (session["id"], interaction_id),
             ).fetchone()
+            # A committed payload remains a replay even after Stop or a later
+            # prompt reopens this interaction. Replaying it must never apply
+            # its mutations again or acknowledge the work that reopened it.
+            receipt = connection.execute(
+                "SELECT 1 FROM events WHERE idempotency_key = ? AND session_pk = ? AND interaction_id = ? AND project_id = ?",
+                (f"checkpoint:{host}:{session_id}:{interaction_id}:{payload_hash}", session["id"], interaction_id, project["id"]),
+            ).fetchone()
+            if receipt or (already_done and already_done["checkpoint_payload_hash"] == payload_hash):
+                return {
+                    "project": project["route_path"], "changed": [],
+                    "checkpointed": bool(already_done), "idempotent_replay": True,
+                    "post_checkpoint_work_pending": not already_done or (
+                        (int(already_done["tool_activity_generation"])
+                         if int(already_done["tool_activity_generation"]) > int(already_done["classified_tool_activity_generation"])
+                         else int(already_done["last_effective_tool_generation"]))
+                        > int(already_done["checkpoint_tool_activity_generation"] or 0)
+                    ),
+                }
             if already_done:
-                if already_done["checkpoint_payload_hash"] != payload_hash:
+                if (already_done["checkpoint_tool_activity_generation"] is None
+                    or int(already_done["last_non_record_tool_generation"]) <= int(already_done["checkpoint_tool_activity_generation"])):
                     raise MindmapError(
                         f"Interaction {interaction_id!r} was already checkpointed with a different payload."
                     )
-                return {
-                    "project": project["route_path"],
-                    "changed": [],
-                    "checkpointed": True,
-                    "idempotent_replay": True,
-                }
+                # Intervening work permits a deliberate corrective delta. All
+                # revision/graph checks and the new generation commit below
+                # share this BEGIN IMMEDIATE transaction; failure keeps the old checkpoint.
             existing_ids = {
                 row["item_id"]
                 for row in connection.execute(
@@ -1559,6 +1590,7 @@ class Store:
         interaction_id: str,
         reason: str,
         details: dict[str, Any] | None = None,
+        *, expected_checkpoint: dict[str, Any] | None = None,
     ) -> bool:
         session = self.session(host, session_id)
         if not session:
@@ -1566,13 +1598,20 @@ class Store:
         with self.transaction() as connection:
             turn = connection.execute(
                 """
-                SELECT id, project_id, checkpointed_at, checkpoint_payload_hash
+                SELECT id, project_id, checkpointed_at, checkpoint_payload_hash, checkpoint_tool_activity_generation
                 FROM turns
                 WHERE session_pk = ? AND interaction_id = ?
                 """,
                 (session["id"], interaction_id),
             ).fetchone()
             if not turn or not turn["checkpointed_at"]:
+                return False
+            if expected_checkpoint is not None and any(
+                turn[key] != expected_checkpoint.get(key)
+                for key in ("checkpointed_at", "checkpoint_payload_hash", "checkpoint_tool_activity_generation")
+            ):
+                # A corrective record won the transaction race; never erase it
+                # using a Stop decision made from an older snapshot.
                 return False
             connection.execute(
                 """
@@ -1597,6 +1636,17 @@ class Store:
                 ),
             )
             return True
+
+    def checkpoint_identity(self, turn_ref: int) -> dict[str, Any]:
+        with self.read_connection() as connection:
+            row = connection.execute(
+                "SELECT t.id AS turn_ref, t.interaction_id, s.host, s.session_id, p.root_path "
+                "FROM turns t JOIN sessions s ON s.id=t.session_pk "
+                "JOIN projects p ON p.id=t.project_id WHERE t.id=?", (turn_ref,),
+            ).fetchone()
+            if not row:
+                raise MindmapError("Unknown checkpoint turn reference.")
+            return dict(row)
 
     def turn(self, host: str, session_id: str, interaction_id: str) -> dict[str, Any] | None:
         session = self.session(host, session_id)
@@ -1763,11 +1813,17 @@ class Store:
             project, items = self._project_and_items(connection, project_id)
         return {"project": project, "items": items}
 
-    def context(self, root: str | Path, include_inactive: bool = False) -> str:
+    def context(
+        self, root: str | Path, include_inactive: bool = False, *,
+        max_bytes: int | None = None, focus: str = "",
+    ) -> str:
         project = self.find_project(root, active_only=not include_inactive)
         if not project:
             return "Mindmap is inactive for this directory."
         snapshot = self.project_snapshot(project["id"])
+        if max_bytes is not None:
+            from .context import automatic_map
+            return automatic_map(snapshot, max_bytes, focus)
         project = snapshot["project"]
         items = snapshot["items"]
         user_deleted_branches = snapshot["user_deleted_branches"]
