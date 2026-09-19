@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import MindmapError
+from .guidance import record_schema
 from .lifecycle import run_hook
 from .paths import discover_project_root
 from .store import Store
@@ -74,13 +75,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     record = sub.add_parser("record", help="Atomically change the map and checkpoint a turn")
     record.add_argument("--root")
-    record.add_argument("--host", required=True, choices=["codex", "claude", "unknown"])
-    record.add_argument("--session-id", required=True)
-    record.add_argument("--interaction-id", required=True)
+    record.add_argument("--turn-ref", type=int, help="Exact local turn reference supplied by bounded hook context")
+    record.add_argument("--host", choices=["codex", "claude", "unknown"])
+    record.add_argument("--session-id")
+    record.add_argument("--interaction-id")
     record.add_argument("--file", default="-", help="JSON payload path, or - for stdin")
 
     snapshot = sub.add_parser("snapshot", help="Export a project snapshot")
     snapshot.add_argument("--root")
+    snapshot.add_argument("--turn-ref", type=int)
+    snapshot.add_argument("--project-ref", type=int)
+
+    identity = sub.add_parser("identity", help="Resolve an exact local checkpoint turn reference")
+    identity.add_argument("--turn-ref", type=int, required=True)
+    sub.add_parser("schema", help="Print the complete record contract and enforced limits")
 
     hook = sub.add_parser("hook", help=argparse.SUPPRESS)
     hook.add_argument("--host", required=True, choices=["codex", "claude"])
@@ -92,6 +100,9 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "hook":
         return run_hook(args.host)
+    if args.command == "schema":
+        _emit(record_schema())
+        return 0
     try:
         store = Store()
         if args.command in {"start", "activate"}:
@@ -124,7 +135,17 @@ def main(argv: list[str] | None = None) -> int:
             store.import_transcript(args.host, args.session_id)
             messages = store.normalized_history(args.host, args.session_id)
             print(render_markdown(messages) if args.format == "markdown" else json.dumps(messages, indent=2))
+        elif args.command == "identity":
+            _emit(store.checkpoint_identity(args.turn_ref))
         elif args.command == "record":
+            if args.turn_ref is not None:
+                if any((args.root, args.host, args.session_id, args.interaction_id)):
+                    raise MindmapError("Use --turn-ref or explicit checkpoint identity, not both.")
+                identity = store.checkpoint_identity(args.turn_ref)
+                args.root, args.host = identity["root_path"], identity["host"]
+                args.session_id, args.interaction_id = identity["session_id"], identity["interaction_id"]
+            elif not all((args.host, args.session_id, args.interaction_id)):
+                raise MindmapError("record requires --host, --session-id and --interaction-id, or --turn-ref.")
             result = store.record(
                 _root(args.root),
                 args.host,
@@ -134,6 +155,15 @@ def main(argv: list[str] | None = None) -> int:
             )
             _emit(result)
         elif args.command == "snapshot":
+            if args.project_ref is not None:
+                if args.root or args.turn_ref is not None:
+                    raise MindmapError("Use only one of --root, --turn-ref and --project-ref.")
+                _emit(store.project_snapshot(args.project_ref))
+                return 0
+            if args.turn_ref is not None:
+                if args.root:
+                    raise MindmapError("Use --turn-ref or --root, not both.")
+                args.root = store.checkpoint_identity(args.turn_ref)["root_path"]
             project = store.find_project(_root(args.root), active_only=False)
             if not project:
                 raise MindmapError("No Mindmap project contains this directory.")
