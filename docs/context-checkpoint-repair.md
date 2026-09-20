@@ -1,5 +1,7 @@
 # Context and checkpoint repair qualification
 
+Subsequent release and rollout status is recorded in [v0.3.2 release qualification](release-qualification-v0.3.2.md). The local investigation and qualification evidence below remains historical.
+
 This local 0.3.2 candidate repairs automatic context growth, missing validator guidance, and checkpoint correction/retry handling. The reviewed starting commit was `649343675bc8da9ecb137dfed73557e2c44f95e0`; its working tree was clean before implementation. Publishing, live installation replacement, and canary rollout have not been performed.
 
 The [September 20 closeout](repair-closeout.md) records the subsequent fixes and fresh qualification of the two remaining issues, #33 and #34. The earlier samples below remain as historical evidence, including their failures and coverage limits.
