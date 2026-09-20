@@ -30,7 +30,9 @@ The controlled live cutover is queued because affected Codex/Claude processes ar
 
 The final inventory nevertheless observed Mac Codex registered at 0.3.2, with every file matching the published ZIP and the former 0.3.1 cache directory removed. The cause of that cache replacement was not attributed. Mac Claude and both Linux installations remained at 0.3.1. To preserve the path used by existing sessions, the 23-file Mac Codex 0.3.1 cache was restored exactly from the verified backup; the registered default remained 0.3.2. This follows the compatibility-cache recovery recorded for [v0.3.1](release-qualification-v0.3.1.md). Remove that compatibility copy only after all old processes have ended.
 
-This partial version transition is not a completed installation check: fresh-process hook delivery and the four-installation cutover remain outstanding. The before/after inventories and compatibility restoration are retained with the release evidence.
+A later check found all 23 restored compatibility-cache files removed again. The restoration therefore did not provide a durable bridge for old sessions; the verified backup outside the managed cache remains intact. The cause remains unattributed. Finish and quit the affected hosts before completing the controlled cutover.
+
+This partial version transition is not a completed installation check: fresh-process hook delivery and the four-installation cutover remain outstanding. The before/after inventories, restoration and failed persistence check are retained with the release evidence.
 
 After a quiet window, refresh the backups, use the existing installer pinned to v0.3.2, then run `mindmap setup --refresh --all` on each machine. Verify every installed file against the release ZIPs, identify any host-owned markers, and start fresh processes to check actual hook delivery, checkpoint acceptance and Stop behavior. These remaining checks belong to [#37](https://github.com/erd0s/mindmap/issues/37).
 
