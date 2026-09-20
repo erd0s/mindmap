@@ -13,6 +13,12 @@ SESSION_BYTES = 4096
 STOP_BYTES = 2048
 CONTRACT_BYTES = 1800
 
+CHANGE_SCOPE = (
+    'Edit only durable concepts and fields changed by this turn. Leave explicitly unchanged branches untouched; '
+    'do not copy dependency news into their summaries/resumes. '
+    'Unrelated one-off questions with no lasting decision or follow-up need an empty delta.'
+)
+
 BRIEF_SEMANTICS = (
     'Use a small causal tree: parent each distinct side quest, decision or handoff to the idea that caused it. '
     'Historical plans are context, not authorization; follow the current request. '
@@ -20,6 +26,8 @@ BRIEF_SEMANTICS = (
     'When child work starts, open its planned parent and rewrite stale ancestor/sibling resumes; a preparatory decision alone does not count. '
     'Settle completed handoffs and clear waiting resumes; keep broader goals and remaining checks open. '
     'Reuse IDs for changed evidence; preserve independent deliverables and deferred plans. '
+    'Leave explicitly unchanged branches and their fields untouched. '
+    'Skip unrelated one-off questions with no lasting decision or follow-up. '
     'Omitted fields persist; send "resume":"" explicitly to clear stale text. '
     'A settled parent may retain unfinished children.'
 )
@@ -29,9 +37,10 @@ SEMANTICS = "\n".join([
     'Compress the conversation into a SMALL CAUSAL TREE of concepts. Never make nodes for messages, tool calls, timestamps, or a chronological chat log.',
     'Create only meaningful concepts needed for a quick overview. Connect each child to the thought or goal that caused it. Capture explicit future intentions as planned, unresolved concepts as open, and covered/decided/completed/rejected concepts as settled. Do not invent unspoken plans.',
     'An upsert of an existing concept retains every omitted field. To clear stale frontier text, send "resume":"" explicitly; saying it is cleared in the final response is not a map change.',
+    CHANGE_SCOPE + ' Record received evidence on the handoff itself. Rewrite ancestor/sibling resumes only when the evidence makes their existing next action stale; additional background alone does not change a frontier.',
     'A planned concept has started once a child beneath it records work that has begun or finished; a preparatory decision recorded before the work starts does not count. In that same checkpoint set the planned parent open (or settle it) and rewrite ancestor and sibling resumes that still present the started work as future; do not settle broader outcomes or remaining acceptance checks on that evidence alone.',
     "When the conversation shows that a handoff, delegated step, or prerequisite finished elsewhere, settle that concept with the received outcome and clear its waiting resume. Keep the broader goal, the receiver's own remaining work, and paused branches open; settle only what the evidence completes.",
-    'When new evidence merely changes the state of an existing concept, update or reopen that same id. Do not add a child that only restates the symptom or evidence unless the conversation made it an independent investigation or plan. Conversely, preserve a distinct side quest, deliverable or handoff, decision, or deferred plan with its own state or re-entry point; a root summary is not a substitute for that branch.',
+    'When new evidence merely changes the state of an existing concept, update or reopen that same id. If it already represents the work just completed, record that outcome there; do not add a duplicate completion node or insert one as a parent of its handoffs. Do not add a child that only restates the symptom or evidence unless the conversation made it an independent investigation or plan. Conversely, preserve a distinct side quest, deliverable or handoff, decision, or deferred plan with its own state or re-entry point; a root summary is not a substitute for that branch.',
     'A settled parent may retain unfinished children. Historical plans are context, not authorization; follow the current request.',
     'For resumed work, continue the matching frontier concept. Update it when the thought is unchanged; if the turn produces a genuinely new concept, parent it to the frontier it grew from, not to the root merely because this is a new session.',
 ])
@@ -77,7 +86,7 @@ def contract(command: str, *, recovery: bool = False) -> str:
         f'Checkpoint this turn: pipe JSON to {command} prepare --file -; then run its exact commit_command as the final tool (foreground Bash/exec_command).',
         'Use a non-interactive pipe or heredoc, never TTY/write_stdin. Finish all tools, audio, clipboard, notifications and async work first; after commit send the final response without another tool.',
         'JSON: {"summary":"what changed or no map change","operations":[]}. Empty delta is valid. No unknown fields.',
-        *([] if recovery else ['Treat this as a compressed causal concept tree and update it only when the turn changes the thinking, decisions, explicit plans, or frontier.']),
+        *([] if recovery else [CHANGE_SCOPE]),
         compact_guidance(),
         'Historical plans are context, not authorization; follow the current request. Use causal concepts. Reuse IDs; planned=unstarted, open=unresolved, settled=done. Omitted fields persist; "resume":"" clears stale text. Respect user deletions; "restore":true requires explicit request.',
         f'Retrieve full fields/revisions: {command} read (paged; --roots, --parent ID, --id ID, --notices). Same prefix: help for schema; state for checkpoint token.',

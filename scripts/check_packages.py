@@ -97,6 +97,10 @@ def main() -> int:
             f"stale {host} hook launcher",
         )
         check(
+            file_digest(root / "scripts" / "hook.py") == file_digest(ROOT / "platforms" / "hook.py"),
+            f"modified {host} hook entrypoint (test wrappers must never ship)",
+        )
+        check(
             file_digest(root / "bin" / "mindmap") == file_digest(ROOT / "platforms" / "run_hook.sh"),
             f"stale {host} command launcher",
         )

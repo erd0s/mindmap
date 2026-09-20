@@ -638,7 +638,8 @@ class RepairTests(unittest.TestCase):
         self.record({'summary': 'Initial goal', 'operations': [{'op': 'upsert', 'id': 'main-goal',
             'title': 'Main goal', 'summary': 'Current comparison', 'resume': 'Finish the current comparison.'}]})
         text = self.start('Resolve the separate prerequisite')['hookSpecificOutput']['additionalContext']
-        self.assertIn('update it only when the turn changes', text.encode()[:1800].decode())
+        self.assertIn('Leave explicitly unchanged branches untouched', text.encode()[:1800].decode())
+        self.assertIn('Unrelated one-off questions with no lasting decision or follow-up need an empty delta.', text.encode()[:1800].decode())
         preview = text.encode()[:2048].decode()
         self.assertIn('[main-goal]', preview)
         self.assertIn('parent root; frontier', preview)

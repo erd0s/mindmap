@@ -20,6 +20,7 @@ from pathlib import Path
 
 from scripts.run_semantic_evals import (ROOT, claude_trial, codex_trial, executable_version,
     mindmap, prepare_codex_home, require_package, run)
+from scripts.stop_recovery_probe import MARKER_COMMAND, real_tool_problems
 
 
 CASES = ("missing", "later-tool", "actual-later-tool", "legacy-age", "explicit-stop", "recovery-failure")
@@ -54,7 +55,7 @@ def qualify(host, case, trial, package, base_environment, model):
         if case == 'actual-later-tool':
             prompt = ("This is an isolated checkpoint recovery test. No map changes or project edits are needed. "
                       "Prepare and commit an empty Mindmap checkpoint. After that successful commit, run "
-                      "printf 'qualification-later-tool\\n' as a separate shell tool call, then respond briefly. "
+                      + MARKER_COMMAND + " as a separate shell tool call; that disposable marker is the only allowed file write. Then respond briefly. "
                       "For this test, do not prepare another checkpoint until the Stop hook asks you to recover. "
                       "When it does ask, follow its recovery instructions and finish normally.")
         executable = shutil.which(host)
@@ -75,6 +76,9 @@ def qualify(host, case, trial, package, base_environment, model):
             Path(shlex.split(command)[1]).unlink(missing_ok=True)
         blocks = [e for e in stops if e["stdout"] and json.loads(e["stdout"]).get("decision") == "block"]
         problems = []
+        if case == 'actual-later-tool':
+            marker = project / '.qualification-later-tool'
+            problems.extend(real_tool_problems(events, marker.read_text() if marker.exists() else None))
         if code != 0:
             problems.append(f"host exited {code}")
         if len(stops) != 2 or len(blocks) != 1:
