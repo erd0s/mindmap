@@ -26,7 +26,11 @@ All 22 downloaded release artifacts matched the published checksum manifest. Its
 
 Release and rollout were authorized after the local closeout. Consistent SQLite backups and complete copies of the four installed plugin packages were prepared on the Mac and Linux workstation. Both database backups passed integrity checks. Private backup manifests remain on their respective machines under `~/.local/state/mindmap/release-backups/`.
 
-Live installation is queued because affected Codex/Claude processes are still running. The existing forced-refresh procedure removes cached runtime paths; [the installation instructions](../README.md#install) require active hosts to finish and quit first. No running host was terminated and no live plugin was replaced by the release task.
+The controlled live cutover is queued because affected Codex/Claude processes are still running. The existing forced-refresh procedure removes cached runtime paths; [the installation instructions](../README.md#install) require active hosts to finish and quit first. No running host was terminated and the release task did not invoke the live installer or forced refresh.
+
+The final inventory nevertheless observed Mac Codex registered at 0.3.2, with every file matching the published ZIP and the former 0.3.1 cache directory removed. The cause of that cache replacement was not attributed. Mac Claude and both Linux installations remained at 0.3.1. To preserve the path used by existing sessions, the 23-file Mac Codex 0.3.1 cache was restored exactly from the verified backup; the registered default remained 0.3.2. This follows the compatibility-cache recovery recorded for [v0.3.1](release-qualification-v0.3.1.md). Remove that compatibility copy only after all old processes have ended.
+
+This partial version transition is not a completed installation check: fresh-process hook delivery and the four-installation cutover remain outstanding. The before/after inventories and compatibility restoration are retained with the release evidence.
 
 After a quiet window, refresh the backups, use the existing installer pinned to v0.3.2, then run `mindmap setup --refresh --all` on each machine. Verify every installed file against the release ZIPs, identify any host-owned markers, and start fresh processes to check actual hook delivery, checkpoint acceptance and Stop behavior. These remaining checks belong to [#37](https://github.com/erd0s/mindmap/issues/37).
 
