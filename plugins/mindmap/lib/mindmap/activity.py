@@ -69,12 +69,12 @@ def note_pre_tool_activity(host: str, payload: dict[str, Any]) -> None:
             return
         if interaction_id:
             turn = connection.execute(
-                "SELECT id FROM turns WHERE session_pk = ? AND interaction_id = ?",
+                "SELECT id, tool_activity_generation FROM turns WHERE session_pk = ? AND interaction_id = ?",
                 (session["id"], interaction_id),
             ).fetchone()
         else:
             turn = connection.execute(
-                "SELECT id FROM turns WHERE session_pk = ? ORDER BY id DESC LIMIT 1",
+                "SELECT id, tool_activity_generation FROM turns WHERE session_pk = ? ORDER BY id DESC LIMIT 1",
                 (session["id"],),
             ).fetchone()
         if not turn:
@@ -88,6 +88,14 @@ def note_pre_tool_activity(host: str, payload: dict[str, Any]) -> None:
             """,
             (tool_name, now, turn["id"]),
         )
+        from .protocol import correlate_commit
+        try:
+            correlate_commit(connection, turn["id"], int(turn["tool_activity_generation"]) + 1, payload)
+        except sqlite3.OperationalError as exc:
+            if str(exc) != "no such table: record_requests":
+                raise
+            # A fast hook may precede the first full Store migration. Preserve
+            # the raw activity signal; absent metadata cannot prove a retry.
 
 
 def run_pre_tool_hook(host: str, payload: dict[str, Any]) -> int:

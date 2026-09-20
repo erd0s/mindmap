@@ -36,23 +36,30 @@ SQLite owns the canonical state:
 - `projects` stores root identity, display route, and activation.
 - `sessions` tracks host identity and transcript cursors.
 - `turns` binds one agent interaction to its current checkpoint, payload digest, observed tool generation, and unresolved final output.
+- `context_bindings` maps short private command files to exact project/turn identity.
+- `record_requests` retains immutable prepared JSON, prompt version, correction token, and correlated commit coverage.
 - `turn_prompts` preserves every distinct prompt when a host reuses an interaction identifier for a steer.
 - `items` materializes the current causal tree.
 - `events` retains append-only provenance, including explicit subtree deletion.
 - `messages` retains normalized transcript evidence for reconstruction.
 
-Agent writes use WAL mode, a busy timeout, immediate transactions, deferred parent validation, transcript identity anchors, optimistic item revisions, and payload-verified interaction idempotency. A map mutation and its interaction checkpoint commit together. A distinct later prompt under the same interaction identifier invalidates that checkpoint while preserving its mutations, so the agent can record an incremental correction from current revisions.
+Agent writes use WAL mode, a busy timeout, immediate transactions, deferred parent validation, transcript identity anchors, optimistic item revisions, and payload-verified interaction idempotency and immutable request receipts. A map mutation and its interaction checkpoint commit together. A distinct later prompt under the same interaction identifier invalidates that checkpoint while preserving its mutations, so the agent can record an incremental correction from current revisions.
 
-`PreToolUse` advances a turn's tool generation before each observed local or MCP tool. `record` saves the current generation with the checkpoint. Stop invalidates a checkpoint when the live generation is newer, which catches fast post-checkpoint work. A zero saved generation means the turn came from an older hook package or a direct command, so only those turns retain the 60-second fallback. Hosted tools and new commitments stated only in final prose remain observable gaps; the mechanism is a strong finality signal, not semantic proof.
+`PreToolUse` advances a turn's tool generation before each observed tool. The ordinary `record` interface saves that generation and returns a unique checkpoint token. A deliberate correction names that token with `--supersedes`; mutations, exact revision checks, replacement coverage, and provenance commit in one transaction. Ordinary divergent repeats remain rejected. Identical direct payload replays never acknowledge later work.
 
-The agent supplies each record as JSON through a non-interactive pipe or
-heredoc. The record command rejects interactive terminal input because a
-canonical pseudo-terminal can truncate one line at 4096 bytes. This transport
-rule is separate from Mindmap's validated 100 KB record limit. Audio, clipboard
-writes, notifications, cleanup, and every other tool-side effect run before the
-record; the agent sends only its final textual response afterward.
+The injected protocol uses two commands. `prepare --file -` accepts non-interactive JSON and retains an immutable request at the observed generation. Its returned `commit_command` is run alone as the final foreground Bash/exec_command call. The fast hook recognizes only that exact registered command. It advances the request's safe generation only when every intervening event belongs to the same command. Thus retries include their own tool events without covering unrelated activity or duplicating mutations. Unknown wrappers, background calls, bundled commands, and failed ordinary tools break that chain. A new prompt also expires prepared requests for the earlier prompt version.
 
-The fast activity hook performs one narrow SQLite update without importing the full lifecycle runtime or scanning the schema. On the development machine, 20 direct fast-hook processes took 0.84 seconds, compared with 1.24 seconds through the full lifecycle path. The portable shell launcher raised the measured total to 1.16 seconds for 20 calls. These figures are local benchmarks, not test thresholds.
+Stop checks freshness and invalidates stale checkpoints within one write transaction, serialized with record commits and retry coverage refreshes. It gives one bounded recovery pass, then fails open. Tools after a recovery checkpoint still invalidate it for honest unresolved diagnostics. Zero observed coverage retains the 60-second legacy fallback. Hosted activity, asynchronous completion after preparation, and commitments appearing only in final prose remain observation gaps: finish and join work before preparing.
+
+Short command files use this runtime's interpreter and library path, bind the database explicitly, and resolve identities from SQLite. They live in a private data-directory subdirectory, with a private `/tmp/mindmap-UID` fallback for long paths. No path, identity, executable instruction, revision, or warning is sliced to meet a delivery budget. Commands and prepared requests survive process restarts; replacing runtime installations still requires stopping host processes first. See [the protocol and compatibility contract](checkpoint-protocol.md).
+
+Automatic prompt output is capped at 8,192 UTF-8 bytes including its serialized JSON envelope; SessionStart at 4,096 and Stop recovery at 2,048. The essential decoded checkpoint contract fits within the first 1,800 bytes. JSON is serialized without ASCII-escaping Unicode. Numeric guidance comes from the validator's shared definitions in `limits.py`.
+
+Prompt context selects deterministic whole concept records using explicit IDs, request words, the current session's recent contributions, unfinished state, recency and stable ID ties. It reserves root discovery, includes relevant settled concepts and parent IDs, and labels omissions. A relevant deep leaf is considered before its large ancestor records; fields that do not fit are explicitly omitted, never silently clipped. Unfinished leaves carry an inline frontier label without repeating their resume text. The first contract retains the incremental rule: update only what the current turn changes. The reviewed causal, parent-transition and handoff guidance has reserved space after the selected map. Historical plans are evidence to reconcile against the current request, not authorization to resume them.
+
+The bound `read` command returns pages of complete fields and revisions, roots, children, a selected ID, or warnings and deletions. Each page is capped at 16,384 serialized UTF-8 bytes and supplies an explicit continuation cursor. A content fingerprint rejects continuation after the graph or notices change. A deliberate complete `snapshot` export remains available. Context preparation reads the graph and selected provenance aggregates in a consistent transaction without loading transcript/session history or constructing the full rendered map. Storage remains complete; selection never edits concepts. PreCompact and PostCompact import evidence silently.
+
+The fast activity path still avoids importing the store/lifecycle runtime or scanning schema. It now makes the generation update plus an indexed request-correlation update inside the same transaction. Earlier timing figures apply to the old single-update path; current qualification measurements are reported separately.
 
 The display route is a stable, lowercased, percent-encoded form of the path beneath the user's home directory. It is an identity and command-line selector, not a URL. Case-folded collisions are rejected rather than merged.
 
@@ -62,11 +69,10 @@ The display route is a stable, lowercased, percent-encoded form of the path bene
 2. `start` activates the project, attaches the current session, and imports available history.
 3. The host adapter supplies project, host, session, and interaction identity.
 4. The skill compresses the session into goals, branches, questions, decisions, plans, and resume points.
-5. A lightweight `PreToolUse` hook advances the active turn's generation before each observed tool; the record command snapshots that generation.
-6. Deterministic code rejects interactive terminal input, validates the complete
-   piped payload, and atomically records the update.
+5. A lightweight `PreToolUse` hook counts tools and correlates exact prepared commit commands.
+6. The agent prepares non-interactive JSON and executes its returned commit command as the final tool; validation and map/checkpoint mutation are atomic.
 7. The Stop hook requests one recovery pass when the current interaction has no checkpoint or has later observed tool activity, then fails open so Mindmap cannot trap the host session.
-8. If an unattended record attempt still fails, the next prompt identifies the prior unresolved interaction and tells the agent to reconcile it in the current checkpoint.
+8. If an unattended record attempt still fails, the next prompt reports prior unresolved work and tells the agent to reconcile it in the current checkpoint.
 9. Future local sessions read the same project map regardless of which supported host wrote it.
 
 Transcript parsing is an adapter rather than a storage contract. Unknown JSONL records are ignored. Claude Stop input supplies the final assistant message because its transcript can lag the hook event.
@@ -79,7 +85,7 @@ Each viewer reads a project and its items in one SQLite read transaction. A pers
 
 The desktop process owns one watcher and emits a lightweight change event to all open windows. The coding-session picker and each graph live in separate native windows. From a graph, <kbd>⌘</kbd><kbd>O</kbd> or <kbd>⌘</kbd><kbd>N</kbd> opens another picker; the shortcuts do nothing inside a picker so they cannot multiply open dialogs. <kbd>Esc</kbd> closes only the active picker.
 
-Subtree deletion is a deliberate user edit. Each viewer sends the exact identifier/revision set shown by its confirmation dialog. One recursive transaction rejects a changed branch, records each deleted identifier and title, removes the selected item and all descendants, and updates the project timestamp. Messages and prior events remain intact. Lifecycle context replays these events as durable tombstones, so older transcript evidence cannot recreate a deleted branch. Only an explicit `restore: true` upsert clears a tombstone; legacy later `item.created` events remain compatible.
+Subtree deletion is a deliberate user edit. Each viewer sends the exact identifier/revision set shown by its confirmation dialog. One recursive transaction rejects a changed branch, records each deleted identifier and title, removes the selected item and all descendants, and updates the project timestamp. Messages and prior events remain intact. Bounded context discloses tombstone counts and retrieval; recording still replays these events as durable tombstones, so older transcript evidence cannot recreate a deleted branch. Only an explicit `restore: true` upsert clears a tombstone; legacy later `item.created` events remain compatible.
 
 ## Why SQLite stays local
 

@@ -7,4 +7,4 @@ import sys
 # the earliest package boundary as well as in those entry points.
 sys.dont_write_bytecode = True
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"

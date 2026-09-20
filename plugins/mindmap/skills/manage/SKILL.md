@@ -13,7 +13,7 @@ Never activate it implicitly. The user must invoke this skill with exactly one a
 
 ## Use the injected runtime context
 
-Look first for `MINDMAP_ACTIVE_V1` in the current context. Lifecycle hooks put the exact project root, session id, interaction id, transcript command, and atomic record command there. Use those commands exactly; they avoid ambiguity when several tabs are working in the same directory.
+Look first for `MINDMAP_ACTIVE_V1` in the current context. Lifecycle hooks provide a short command bound in SQLite to the exact project, host, session and interaction. Use that prefix exactly. Pipe checkpoint JSON to its `prepare --file -` action, then execute the returned `commit_command` alone as the final tool. The extra preparation step makes transport retries identifiable even when their tool calls advance the activity counter. SessionStart provides retrieval only; wait for the prompt-bound checkpoint command.
 
 If no runtime context was injected, find `mindmap` on `PATH`. In a packaged plugin the fallback executable is also available at `../../bin/mindmap` relative to this skill directory. A fallback command is valid only in the agent session's existing working directory: never use `cd`, change a tool call's workdir, or substitute a guessed parent or child project directory. For `start`, run `mindmap start --root "$PWD"`. If it succeeds, report activation once and explain that transcript backfill begins on the next hook event. If it fails, or injected context contains `MINDMAP_ACTIVATION_BLOCKED_V1`, do not retry from another directory and do not claim activation, tracking, checkpointing, or future backfill; explain that the user must start a new agent session inside the intended project directory and invoke `start` there. For `status`, run `mindmap snapshot --root "$PWD"` and give a read-only playback of its project and items. For `stop`, run `mindmap stop --root "$PWD"`. A fallback `sync` requires a later hooked turn, so ask the user to invoke sync again after the plugin hooks are loaded.
 
@@ -24,7 +24,7 @@ If no runtime context was injected, find `mindmap` on `PATH`. In a packaged plug
 1. Confirm that the hook activated the project. If it did not, use the same-directory fallback above only when activation was not explicitly blocked.
 2. Run the injected transcript command and read its output. This is the mid-session backfill. Do not run `mindmap status` as a substitute.
 3. Compress the whole relevant conversation, not just the last exchange, into one root seed and the smallest useful set of causal branches.
-4. Use the injected record command to apply the map and checkpoint this interaction.
+4. Use the injected prepare/commit commands to apply the map and checkpoint this interaction.
 5. Tell the user which project root is active and that tracking will persist across future Codex and Claude sessions until `stop`. Explain that activation covers the whole project directory, so unrelated parallel sessions there would also contribute.
 
 If the project was already active, treat `start` as `sync`.
@@ -38,14 +38,14 @@ If the project was already active, treat `start` as `sync`.
 
 ### status
 
-1. Read the injected durable context or run `mindmap snapshot --root "$PWD"`.
+1. Read the partial injected context, then use the bound `read` command for needed details. `read --roots` discovers branches, `read --parent ID` lists children, `read --id ID` returns full fields and revisions, and `read --notices` returns warnings and user deletions. Follow `next_cursor` with the same selector and `--cursor VALUE`; if the map changed, refresh without the cursor. Use a complete `snapshot` export only for deliberate inspection.
 2. Play it back simply as a causal tree: root intent, explored branches, open frontier, explicit future branches, settled conclusions, and the best resume point.
-3. Use the injected record command with an empty `operations` array and a truthful no-change summary unless the status review itself exposed stale state.
+3. Use the injected prepare/commit commands with an empty `operations` array and a truthful no-change summary unless the status review itself exposed stale state.
 
 ### stop
 
 1. Perform one final sync so the last train of thought is not lost.
-2. Use the injected record command to checkpoint it.
+2. Use the injected prepare/commit commands to checkpoint it.
 3. Confirm in the final user-facing response that tracking is stopping and the existing map remains browsable.
 4. Do not run `mindmap stop` when runtime context is present. The Stop hook must capture the final response before it deactivates the project. Use the direct command only for the no-hook fallback described above.
 
@@ -57,14 +57,16 @@ Keep the map aggressively small:
 
 - Prefer roughly 5–20 nodes for an initial backfill of an ordinary session, using fewer whenever possible.
 - A normal new turn should usually change zero to three nodes.
+- An unrelated one-off question with no lasting decision or follow-up needs an empty checkpoint delta. A transient answer alone is not a durable concept; keep meaningful independent intentions and side quests when they do arise.
 - Merge repetition and implementation chatter into the concept it advances.
 - Preserve causal shape, not chronology. Parent means “grew out of”, never merely “happened before”.
-- Across sessions, use the matching frontier and its resume point as the continuation anchor. Update that frontier when the thought is unchanged; parent a genuinely new concept beneath it when the work branches. Never default a new session's concepts to the root.
+- Historical plans do not authorize work: follow the current request. Across sessions, use the matching frontier and its resume point as the continuation anchor. Update that frontier when the thought is unchanged; parent a genuinely new concept beneath it when the work branches. Never default a new session's concepts to the root.
 - Keep one root when the conversation has one governing intent. Use multiple roots only for genuinely independent trains of thought.
 - Remove duplicates, message-like nodes, and obsolete task-board debris when reconciling an older map. Never remove a meaningful settled concept merely to make the current frontier look tidy.
 - “Small” describes the resolution of each concept, not a fixed lifetime node count. Preserve distinct project complexity instead of merging meaningful branches merely because the project has accumulated many concepts.
 - Preserve a branch when the conversation treated it as a distinct side quest, deliverable or handoff, decision, or deferred plan with its own state, evidence, recipient, or re-entry point. Mentioning that idea in a root summary is not a substitute for the branch when a later session must distinguish it from the governing goal. In a dense turn, check every explicitly resolved blocker, completed deliverable, and deferred intention before checkpointing so the last side quest does not displace the main result.
-- Conversely, when new evidence merely changes the state of an existing concept, update or reopen that concept. Do not create a child that only restates the symptom or evidence unless it became an independently discussed investigation or plan.
+- Conversely, when new evidence merely changes the state of an existing concept, update or reopen that concept. If it already represents the work just completed, record that outcome there; do not add a duplicate completion node or insert one as a parent of its handoffs. Do not create a child that only restates the symptom or evidence unless it became an independently discussed investigation or plan.
+- Edit only concepts and fields changed by the current turn. Leave explicitly unchanged branches exactly as stored, including their summaries and resumes. Record dependency news on the handoff itself; do not copy it into an unchanged receiving branch. Rewrite an ancestor or sibling resume when its existing next action becomes stale, not merely to add background.
 - A planned concept has started once a child beneath it records work that has begun or finished; a preparatory decision recorded before the work starts does not count. In the same checkpoint, set that parent open (or settle it) and rewrite ancestor and sibling resumes that still present the started work as future. Do not settle broader outcomes or remaining acceptance checks on that evidence alone.
 - When the conversation shows that a handoff, delegated step, or prerequisite finished elsewhere, settle that concept with the received outcome and clear its waiting resume. Keep the broader goal, the receiver's own remaining work, and paused branches open; settle only what the evidence completes.
 
@@ -84,9 +86,11 @@ Capture plans the user or agent explicitly stated even when nobody has begun the
 
 ## Checkpoint every active turn
 
-After all work and immediately before the final response of every active turn, use the exact injected record command. Make it the final tool action, not merely the final implementation action. Complete every side effect first, including audio, clipboard, notifications, cleanup, and status checks. If another instruction puts a side effect after the checkpoint, preserve the side effect but move it immediately before the record. After the record succeeds, send the final response without calling another tool.
+After all work and immediately before the final response, pipe JSON to the injected `prepare --file -` command using a non-interactive pipe or heredoc. Never use TTY or `write_stdin`; terminals can truncate the payload. Preparation validates and stores an immutable request but does not checkpoint the turn. Run the returned `commit_command` exactly, alone, in a foreground Bash or exec_command call. It atomically applies the delta and returns a checkpoint token. Finish audio, clipboard, notifications, cleanup, status checks and asynchronous work before preparation. After commit, send the final response without another tool.
 
-Supply the JSON through a non-interactive pipe or heredoc in the same tool call as the record command. Never start the command with a TTY or stream the JSON through interactive stdin or `write_stdin`: canonical terminals can truncate input at 4096 bytes. The record CLI rejects interactive TTY stdin. Use `--file PATH` only when a safe, task-scoped payload file already exists; do not create durable checkpoint scratch files. The command accepts one JSON object:
+For a transport failure, repeat the same commit command. This is mutation-idempotent and refreshes coverage only when every intervening observed call is that exact command. Bundled commands, background calls and unknown wrappers count as ordinary work. If other tools run, review their outcome and prepare a new delta with `--supersedes TOKEN`, using the current checkpoint token returned by commit or the bound `state` command. An explicit empty correction is valid. Revision errors roll back the whole delta; read current revisions and prepare again. A different ordinary repeat still conflicts. The direct `record` CLI remains available with `--supersedes`, but an ordinary identical payload replay cannot prove that later tools were reconciled.
+
+Read [record-schema.md](references/record-schema.md) and the validator-derived [record-limits.md](references/record-limits.md) for the full contract. The bound `help` command also exposes it. The command accepts one JSON object:
 
 ```json
 {
@@ -108,9 +112,9 @@ Supply the JSON through a non-interactive pipe or heredoc in the same tool call 
 }
 ```
 
-Include `concept_model` when the injected context says `LEGACY_MAP_RECONCILIATION_REQUIRED_V2`, after you have read both transcript and snapshot and reconciled the old map. Omit it on ordinary later checkpoints.
+Include `concept_model` when the injected context says `LEGACY_MAP_RECONCILIATION_REQUIRED_V2`, after you have read the transcript and all bounded map pages and reconciled the old map. Omit it on ordinary later checkpoints.
 
-Use `op: "settle"` with an existing `id` to close an item. If the turn genuinely changes nothing, record `{"summary":"No map change; answered a status question.","operations":[]}`. The record operation is transactional and idempotent for a host/session/interaction, so never bypass it with direct database edits.
+Use `op: "settle"` with an existing `id` to close an item. If the turn genuinely changes nothing, record `{"summary":"No map change; answered a status question.","operations":[]}`. A prepared commit is transactional and idempotent for its immutable request, so never bypass it with direct database edits.
 
 Use `op: "remove"`, an existing `id`, and its `expected_revision` only to eliminate a duplicate or wrongly granular node. If it has children, also supply `reparent_to` with another concept id, or `null` only when those children are genuinely independent roots.
 

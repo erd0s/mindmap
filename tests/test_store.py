@@ -54,10 +54,11 @@ class StoreTests(unittest.TestCase):
 
     def test_route_collision_is_explicit(self) -> None:
         self.activate()
-        collision = self.home / "dev" / "exampleproject"
+        collision = self.home / "different-project"
         collision.mkdir(parents=True)
-        with self.assertRaises(RouteCollisionError):
-            self.store.activate(collision)
+        with patch("mindmap.store.route_for_root", return_value="/dev/exampleproject"):
+            with self.assertRaises(RouteCollisionError):
+                self.store.activate(collision)
 
     def test_record_builds_parent_graph_and_is_idempotent(self) -> None:
         project = self.activate()

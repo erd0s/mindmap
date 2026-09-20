@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "id": "unrelated-new-request",
+  "description": "An unrelated language question must not resume a historical frontier.",
+  "project_files": [],
+  "seed_operations": [
+    {
+      "op": "upsert",
+      "id": "old-rollout",
+      "title": "Prepare the deferred warehouse rollout",
+      "summary": "The warehouse rollout is deferred until the user explicitly asks to resume it.",
+      "resume": "Resume rollout only after an explicit request.",
+      "state": "planned",
+      "kind": "goal",
+      "parent_id": null
+    },
+    {
+      "op": "upsert",
+      "id": "old-deploy",
+      "title": "Deploy the warehouse service",
+      "summary": "Deployment is a future task in the deferred rollout.",
+      "resume": "Run the deployment command after approval to resume.",
+      "state": "planned",
+      "kind": "task",
+      "parent_id": "old-rollout"
+    }
+  ],
+  "prompt": "What is the plural of cactus? This is a one-off language question. The deferred warehouse work is unrelated and should remain as it is; do not start it.",
+  "expected": {
+    "nodes": [
+      {
+        "key": "old",
+        "selector": {
+          "id": "old-rollout"
+        },
+        "state": "planned",
+        "root": true
+      },
+      {
+        "key": "deploy",
+        "selector": {
+          "id": "old-deploy"
+        },
+        "state": "planned",
+        "parent_key": "old"
+      }
+    ],
+    "unchanged_ids": [
+      "old-rollout",
+      "old-deploy"
+    ],
+    "max_new_nodes": 0
+  },
+  "reference_items": [
+    {
+      "id": "old-rollout",
+      "title": "Prepare the deferred warehouse rollout",
+      "summary": "The warehouse rollout is deferred until the user explicitly asks to resume it.",
+      "resume": "Resume rollout only after an explicit request.",
+      "state": "planned",
+      "kind": "goal",
+      "parent_id": null,
+      "revision": 1
+    },
+    {
+      "id": "old-deploy",
+      "title": "Deploy the warehouse service",
+      "summary": "Deployment is a future task in the deferred rollout.",
+      "resume": "Run the deployment command after approval to resume.",
+      "state": "planned",
+      "kind": "task",
+      "parent_id": "old-rollout",
+      "revision": 1
+    }
+  ]
+}

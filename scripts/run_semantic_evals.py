@@ -268,7 +268,7 @@ def claude_trial(
         diagnostics = json.dumps(
             {
                 key: payload.get(key)
-                for key in ("subtype", "is_error", "duration_ms", "num_turns", "total_cost_usd")
+                for key in ("subtype", "is_error", "duration_ms", "num_turns", "total_cost_usd", "modelUsage")
                 if key in payload
             },
             sort_keys=True,
@@ -309,6 +309,7 @@ def run_trial(
                 # The harness deliberately runs nonpersistent host sessions;
                 # production would exclude them, so opt in explicitly.
                 "MINDMAP_TRACKING": "on",
+                "MINDMAP_DIAGNOSTICS_PATH": str(base / "diagnostics.jsonl"),
                 "PYTHONPATH": str(package_root / "src")
                 + (os.pathsep + existing_pythonpath if existing_pythonpath else ""),
             }
@@ -319,27 +320,14 @@ def run_trial(
         if initialized.returncode != 0:
             raise RuntimeError("could not initialize semantic eval project")
         mindmap(["start", "--root", str(project)], cwd=project, environment=environment)
-        mindmap(
-            [
-                "record",
-                "--root",
-                str(project),
-                "--host",
-                "codex",
-                "--session-id",
-                "fixture-seed",
-                "--interaction-id",
-                "fixture-seed",
-                "--file",
-                "-",
-            ],
-            cwd=project,
-            environment=environment,
-            payload={
-                "summary": f"Seeded semantic fixture {fixture['id']}.",
-                "operations": fixture["seed_operations"],
-            },
-        )
+        for offset in range(0, len(fixture["seed_operations"]), 20):
+            mindmap(
+                ["record", "--root", str(project), "--host", "codex", "--session-id", "fixture-seed",
+                 "--interaction-id", f"fixture-seed-{offset}", "--file", "-"],
+                cwd=project, environment=environment,
+                payload={"summary": f"Seeded semantic fixture {fixture['id']}.",
+                         "operations": fixture["seed_operations"][offset:offset + 20]},
+            )
         initial = mindmap(
             ["snapshot", "--root", str(project)], cwd=project, environment=environment
         )
@@ -429,6 +417,7 @@ def run_trial(
         return {
             "host": host,
             "host_version": host_version,
+            "delivery_evidence": [json.loads(line) for line in (base / "diagnostics.jsonl").read_text().splitlines()] if (base / "diagnostics.jsonl").exists() else [],
             "fixture": fixture["id"],
             "fixture_digest": fixture_digest(fixture),
             "trial": trial,

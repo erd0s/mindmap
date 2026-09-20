@@ -24,6 +24,7 @@ def file_digest(path: Path) -> str:
 
 
 def main() -> int:
+    subprocess.run([sys.executable, str(ROOT / "scripts/update_record_limits.py"), "--check"], check=True)
     version_match = re.search(
         r'^version\s*=\s*"([^"]+)"',
         (ROOT / "pyproject.toml").read_text(encoding="utf-8"),
@@ -94,6 +95,10 @@ def main() -> int:
         check(
             file_digest(root / "scripts" / "run_hook.sh") == file_digest(ROOT / "platforms" / "run_hook.sh"),
             f"stale {host} hook launcher",
+        )
+        check(
+            file_digest(root / "scripts" / "hook.py") == file_digest(ROOT / "platforms" / "hook.py"),
+            f"modified {host} hook entrypoint (test wrappers must never ship)",
         )
         check(
             file_digest(root / "bin" / "mindmap") == file_digest(ROOT / "platforms" / "run_hook.sh"),
