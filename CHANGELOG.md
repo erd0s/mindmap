@@ -2,7 +2,21 @@
 
 All notable changes appear here. Mindmap follows semantic versioning while the public interfaces settle before 1.0.
 
-## Unreleased
+## 0.3.2 — 2026-09-20
+
+- Bound automatic prompt, session-start and Stop context while retaining the
+  complete graph. Add paged retrieval of concepts, branches and notices, with
+  revisions and continuation cursors that detect concurrent changes.
+- Prepare immutable checkpoint requests, distinguish deliberate corrections
+  from conflicting repeats, and refresh genuine retry coverage without
+  duplicating map mutations. Preserve optimistic revisions, deletion protection
+  and the single Stop recovery pass.
+- Derive validation guidance from the enforced limits and keep essential
+  checkpoint instructions at the start of automatic context.
+- Preserve explicitly unchanged branches, reuse existing concepts for completed
+  work, and avoid turning unrelated one-off answers into durable map entries.
+- Qualify real-tool Stop recovery on both hosts and add regression coverage for
+  bounded context, retrieval, correction/retry races and semantic edit scope.
 
 - Replace an installed local Mindmap marketplace with the requested public
   source before upgrading Codex or Claude Code, preserving Claude plugin data.
