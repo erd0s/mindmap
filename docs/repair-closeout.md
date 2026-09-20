@@ -1,5 +1,7 @@
 # Closing the two remaining repair issues
 
+Subsequent release and rollout status is recorded in [v0.3.2 release qualification](release-qualification-v0.3.2.md). The local investigation and qualification evidence below remains historical.
+
 This follow-up to local commit `fb2fef20295fb56998de1c5c8eebcfb7f704489d` addresses the unwanted receiver edit in [#33](https://github.com/erd0s/mindmap/issues/33) and the unexercised Codex recovery case in [#34](https://github.com/erd0s/mindmap/issues/34). It changes semantic guidance and the isolated recovery fixture. The checkpoint protocol, revision checks and single recovery pass remain the same.
 
 ## Unchanged receiving branches
