@@ -552,3 +552,37 @@ func TestWindowsProjectContainmentIgnoresPathCase(t *testing.T) {
 		t.Fatal("Windows project containment should ignore path case")
 	}
 }
+
+func TestRouteForRootResolvesHomeAndProjectAliases(t *testing.T) {
+	parent := t.TempDir()
+	home := filepath.Join(parent, "real-home")
+	root := filepath.Join(home, "Dev", "Project")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(parent, "home-alias")
+	if err := os.Symlink(home, alias); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	t.Setenv("MINDMAP_HOME_DIR", alias)
+	for _, path := range []string{root, filepath.Join(alias, "Dev", "Project")} {
+		route, err := RouteForRoot(path)
+		if err != nil || route != "/dev/project" {
+			t.Fatalf("route for %q = %q, %v", path, route, err)
+		}
+	}
+	outside := filepath.Join(parent, "outside")
+	if err := os.Mkdir(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	escape := filepath.Join(home, "escape")
+	if err := os.Symlink(outside, escape); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RouteForRoot(escape); err == nil {
+		t.Fatal("symlink outside the home was accepted")
+	}
+	if _, err := RouteForRoot(alias); err == nil {
+		t.Fatal("home alias was accepted as a project")
+	}
+}
