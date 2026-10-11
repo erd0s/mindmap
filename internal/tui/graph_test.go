@@ -80,6 +80,7 @@ func TestVerticalNavigationUsesGlobalDepthOrderAndStopsAtEdges(t *testing.T) {
 }
 
 func TestCanvasDrawsConnectorsAndSelection(t *testing.T) {
+	t.Setenv("MINDMAP_ASCII", "never")
 	graph := NewGraph([]Item{
 		graphItem("root", "", "open"),
 		graphItem("child", "root", "planned"),

@@ -80,8 +80,12 @@ func TestResolveDesktopProjectRootRejectsUnknownProjectSynchronously(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved != known {
-		t.Fatalf("desktop project root = %q, want %q", resolved, known)
+	canonicalKnown, err := filepath.EvalSymlinks(known)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != canonicalKnown {
+		t.Fatalf("desktop project root = %q, want %q", resolved, canonicalKnown)
 	}
 	if _, err := resolveDesktopProjectRoot(unknown); err == nil || !strings.Contains(err.Error(), "no Mindmap project") {
 		t.Fatalf("unknown project error = %v", err)

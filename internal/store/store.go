@@ -1003,6 +1003,10 @@ func RouteForRoot(root string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("find home directory: %w", err)
 	}
+	root, err = CanonicalPath(root)
+	if err != nil {
+		return "", err
+	}
 	relative, err := filepath.Rel(home, root)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("project root %s must be within the home directory", root)
@@ -1038,7 +1042,11 @@ func homeDirectory() (string, error) {
 	if override := os.Getenv("MINDMAP_HOME_DIR"); override != "" {
 		return CanonicalPath(override)
 	}
-	return os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return CanonicalPath(home)
 }
 
 func PathWithin(candidate, root string) bool {
