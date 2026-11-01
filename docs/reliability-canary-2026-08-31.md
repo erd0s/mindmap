@@ -206,10 +206,10 @@ also transitioning the existing concept correctly.
 
 1. Freeze a read-only database copy and record its digest.
 2. Calculate the post-boundary operational measures without raw transcript text.
-3. Inspect every failure, invalidation, and semantic warning in CASS and the
+3. Inspect every failure, invalidation, and semantic warning through the maintained Elasticsearch session reader and the
    corresponding map history.
 4. Complete the independent blinded cold read from the retained trial-1 packet.
-5. Repeat the full cross-project CASS audit, including sessions created during
+5. Repeat the full cross-project session audit through the maintained Elasticsearch reader, including sessions created during
    the canary.
 6. Decide whether to retain the candidate, tighten the Claude resolution rule
    behind a new holdout fixture, or roll back the canary package.

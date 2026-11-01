@@ -1,5 +1,7 @@
 # Mindmap reliability improvement and evaluation plan
 
+Session-search routing, 14 October 2026: CASS is retired at Dirk's request. Historical CASS results below are retained as evidence. Future audits use the `search-session-logs` skill and maintained Elasticsearch reader; do not reinstall or index CASS.
+
 ## Purpose
 
 This programme improves Mindmap without changing its useful resolution. A node should still represent a meaningful thought, decision, question, plan, or work thread—not a message, command, file, or routine task. The work focuses on whether those concepts appear, change state, and remain resumable at the right time.
@@ -161,7 +163,7 @@ Never silently overwrite the raw report.
 
 ### Layer 5: production canary and full audit
 
-After automated and live fixtures pass, deploy the candidate to a small set of new sessions. Review the local operational measures after at least 50 completed turns or one week, whichever comes later. Then repeat the CASS cross-project audit. The full audit validates external validity; it is not the only evidence of improvement.
+After automated and live fixtures pass, deploy the candidate to a small set of new sessions. Review the local operational measures after at least 50 completed turns or one week, whichever comes later. Then repeat the cross-project audit through the maintained Elasticsearch session reader. The full audit validates external validity; it is not the only evidence of improvement.
 
 ## The former 24-concept limit
 
@@ -252,7 +254,7 @@ Status: implemented for unattended record failure; remaining host release checks
 - The live fixture removes built-in shell access and external MCP servers, then verifies zero checkpoints, one unresolved checkpoint, and the next-prompt diagnostic.
 - A control run showed that Claude can use Serena's MCP shell executor when built-in `Bash` is denied. This is valid alternate execution, not a denied record path; `PreToolUse` still counts it.
 - Codex exact-id steers and Claude's latest-turn `PreToolUse` fallback have separate regression tests while sharing the same store semantics.
-- Zero-turn and missing transcript attachments still need explicit diagnostic classification before the repeated CASS audit.
+- Zero-turn and missing transcript attachments still need explicit diagnostic classification before the repeated Elasticsearch session audit.
 
 ### Phase 5: build semantic comparison and release gates
 
@@ -261,8 +263,53 @@ Status: in progress.
 - Generalize the live frontier runner to the full fixture set and both hosts. **Implemented for five temporal semantic cases.**
 - Add repeated-trial structural scoring and human cold-read review. **Automated scoring, repeated runs, the review rubric, and deterministic packet generation are implemented; an independent reviewer remains.**
 - Compare tagged v0.3.0 with the candidate package. **Complete: the clean `287f531` candidate was run against the retained tagged baseline.**
-- Run a production canary, then repeat the full CASS audit.
+- Run a production canary, then repeat the full session audit through the maintained Elasticsearch reader.
 - Promote the reliability evaluation to a release gate after the clean candidate run, cold read, and canary establish stable thresholds.
+
+### Phase 6: exercise concept stability and transition judgment
+
+Status: planned.
+
+Build multi-step synthetic coding sessions and inspect the real map after every
+interaction rather than judging only the final graph. Retain the checkpoint
+event history and the graph shown by a live terminal or desktop viewer so the
+test can distinguish a correct final state from a node that appeared, closed,
+or reopened at the wrong time.
+
+The suite should contain three complementary groups:
+
+- **No-new-concept controls:** realistic implementation, debugging, test,
+  review, and cleanup work continues within a seeded concept without creating
+  another meaningful thought or work thread. Mindmap must not turn messages,
+  commands, files, intermediate symptoms, routine steps, or repeated progress
+  reports into nodes. Existing summaries, resumes, and states may change only
+  when the transcript supplies evidence for that change.
+- **Clear lifecycle cases:** the session introduces a genuine decision,
+  question, side quest, deferred plan, or independent investigation. Mindmap
+  must create one concept at the first interaction where it becomes material,
+  attach it to the correct causal parent, keep a usable resume while it remains
+  unfinished, and settle or reopen it in the interaction where the relevant
+  evidence becomes available.
+- **Ambiguous boundary pairs:** closely matched transcripts test whether the
+  agent distinguishes exploration from commitment, a symptom from an
+  independent investigation, implementation from verified completion, partial
+  success from closure, pausing from abandoning, and incidental wording from a
+  real reopen. Include implicit but well-supported transitions, such as a
+  tested handoff that completes the work without saying "done," alongside
+  counterexamples where a remaining caveat must keep the concept open.
+
+Each fixture should seed the same starting graph, label the expected graph after
+every interaction, identify concepts that must remain unchanged, and state the
+earliest and latest acceptable interaction for each creation, settlement, and
+reopening. Run each case repeatedly through both Codex and Claude, preserve a
+holdout set while prompts are tuned, and score every intermediate snapshot.
+
+The phase passes only when no-new-concept controls create zero unsupported
+nodes or state transitions, every release-blocking concept transition occurs
+within its labelled timing window, causal parents and resumes remain correct,
+and the live viewer agrees with the retained store after every checkpoint and
+after reload. Review all ambiguous failures manually before changing a fixture
+or accepting an alternative interpretation.
 
 ## Current result
 
@@ -292,8 +339,8 @@ This is a host-specific resolution/precision gap, not a missed transition.
 
 A 20-map trial-1 cold-read packet has been generated from the clean reports
 without package, host, model, result, or scorer labels. The independent review,
-production canary of at least 50 completed turns and one week, and repeated CASS
-audit remain.
+production canary of at least 50 completed turns and one week, and a repeated session audit through the maintained Elasticsearch reader
+remain.
 
 Historical results for the two resume-state fixtures come from three trials
 per host on a dirty working tree, rescored offline with scorer v5: Codex 6/6
