@@ -44,7 +44,7 @@ class ProjectPathTests(unittest.TestCase):
         nested = root / "src" / "package"
         nested.mkdir(parents=True)
         (root / ".git").mkdir()
-        self.assertEqual(discover_project_root(nested), root)
+        self.assertEqual(discover_project_root(nested), root.resolve())
 
     def test_start_cli_returns_the_project_without_a_network_url(self) -> None:
         root = self.home / "ExampleOrg" / "kit-cc"

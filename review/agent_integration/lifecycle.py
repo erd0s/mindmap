@@ -5,13 +5,14 @@ import json
 import os
 import re
 import shlex
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from mindmap.errors import MindmapError
 from mindmap.paths import database_path, discover_project_root
+from mindmap.policy import tracking_exclusion
 from mindmap.store import Store
+from mindmap.delivery import context as bounded_context, bounded_message
 
 
 ACTION_PATTERN = re.compile(
@@ -36,18 +37,6 @@ def interaction_id(payload: dict[str, Any]) -> str | None:
     return None
 
 
-def _checkpoint_age_seconds(checkpointed_at: str | None) -> float | None:
-    if not checkpointed_at:
-        return None
-    try:
-        checkpointed = datetime.fromisoformat(checkpointed_at)
-    except ValueError:
-        return None
-    if checkpointed.tzinfo is None:
-        checkpointed = checkpointed.replace(tzinfo=timezone.utc)
-    return max(0.0, (datetime.now(timezone.utc) - checkpointed).total_seconds())
-
-
 def _runner_path() -> str:
     override = os.environ.get("MINDMAP_RUNNER")
     if override:
@@ -63,12 +52,7 @@ def _command(*parts: str) -> str:
 
 
 def _additional(event: str, text: str) -> dict[str, Any]:
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": event,
-            "additionalContext": text,
-        }
-    }
+    return bounded_message(event, text.splitlines())
 
 
 def _activation_blocked(event: str, cwd: str, error: MindmapError) -> dict[str, Any]:
@@ -90,78 +74,12 @@ def _inactive_action_context(event: str, cwd: str, start_command: str) -> dict[s
     return _additional(
         event,
         "MINDMAP_INACTIVE_V1\n"
-        f"Mindmap is inactive for this session's working directory, {cwd}. "
+        f"Mindmap is inactive for this session's working directory, {cwd}.\n"
         "Any active child project does not contain this directory and is not attached to this session. "
         "Do not change directory or set a different tool workdir to inspect, sync, stop, or claim tracking "
         "for another project. Use the explicit start action from a new agent session inside the intended "
-        f"project directory. Same-directory fallback only: {start_command}",
+        f"project directory.\nSame-directory fallback only: {start_command}",
     )
-
-
-def _active_context(
-    store: Store,
-    project: dict[str, Any],
-    host: str,
-    session_id: str,
-    turn_id: str,
-    action: str | None,
-) -> str:
-    transcript_command = _command(
-        "transcript", "--host", host, "--session-id", session_id, "--format", "markdown"
-    )
-    record_command = _command(
-        "record",
-        "--root",
-        project["root_path"],
-        "--host",
-        host,
-        "--session-id",
-        session_id,
-        "--interaction-id",
-        turn_id,
-        "--file",
-        "-",
-    )
-    snapshot_command = _command("snapshot", "--root", project["root_path"])
-    lines = [
-        "MINDMAP_ACTIVE_V1",
-        f"Mindmap is active for {project['root_path']}.",
-        "Scope: this entire project directory. Other Codex or Claude sessions beneath it will also contribute until tracking is stopped.",
-        f"Host/session/interaction: {host} / {session_id} / {turn_id}.",
-        store.context(project["root_path"]),
-        "If the durable context reports a legacy map outside compression bounds, inspect every existing id and revision with:",
-        snapshot_command,
-        "Use the normalized history as source evidence when this is a new or sync request:",
-        transcript_command,
-        "Compress the conversation into a SMALL CAUSAL TREE of concepts. Never make nodes for messages, tool calls, timestamps, or a chronological chat log.",
-        "Before finishing this turn, atomically apply conceptual map changes and checkpoint it by piping JSON to:",
-        record_command,
-        "Run that command once with a non-interactive pipe or heredoc. Never start it with a TTY or stream JSON through interactive stdin/write_stdin: canonical terminals can truncate input at 4096 bytes. The record CLI rejects interactive TTY stdin.",
-        'JSON shape: {"summary":"what changed or no map change","operations":[{"op":"upsert","id":"stable-id","title":"...","summary":"what this concept means","resume":"where to pick it up","state":"planned|open|settled","kind":"goal|thread|decision|task|question|note","parent_id":null,"expected_revision":2}]}. Omit expected_revision for a new id; use the exact current revision for any update, settle, or remove. Add "restore":true only when the user explicitly asks to restore an id listed under USER-DELETED BRANCHES.',
-        "Create only meaningful concepts needed for a quick overview. Connect each child to the thought or goal that caused it. Capture explicit future intentions as planned, unresolved concepts as open, and covered/decided/completed/rejected concepts as settled. Do not invent unspoken plans.",
-        'An upsert of an existing concept retains every omitted field. To clear stale frontier text, send "resume":"" explicitly; saying it is cleared in the final response is not a map change.',
-        "When new evidence merely changes the state of an existing concept, update or reopen that same id. Do not add a child that only restates the symptom or evidence unless the conversation made it an independent investigation or plan. Conversely, preserve a distinct side quest, deliverable or handoff, decision, or deferred plan with its own state or re-entry point; a root summary is not a substitute for that branch.",
-        "Treat the record command as the final tool action, not merely the final implementation action. Complete every side effect first, including audio, clipboard, notifications, cleanup, and status checks. If another instruction puts a side effect after the checkpoint, preserve the side effect but move it immediately before the record. After the record succeeds, send the final response without calling another tool. A later same-interaction user prompt reopens the checkpoint.",
-    ]
-    if action == "start":
-        lines.append("This activation happened mid-session: RUN the transcript command, read the whole normalized history, and reconstruct its compact conceptual tree before checkpointing. Running status is not a substitute for backfill.")
-    elif action == "sync":
-        lines.append("RUN the transcript command and reconcile the compact conceptual tree, including earlier explicit plans not yet started. Running status is not a substitute.")
-    elif action == "status":
-        lines.append("Report the current map simply. Still checkpoint this turn with an empty operations list if nothing changed.")
-    elif action == "stop":
-        lines.append(
-            "After the final record succeeds, finish the user-facing response normally. "
-            "Do not run the direct stop command: the Stop hook must first capture that final response, then it will disable tracking."
-        )
-    if int(project.get("concept_model_version") or 1) < 2:
-        lines.extend(
-            [
-                "LEGACY_MAP_RECONCILIATION_REQUIRED_V2",
-                "This project predates causal-tree v2. RUN both the transcript and snapshot commands now, remove/merge chat-log or task-board debris, rebuild causal parentage, then include top-level \"concept_model\":\"causal-tree-v2\" in the record payload. Do this before continuing normal tracking.",
-            ]
-        )
-    return "\n".join(lines)
 
 
 def handle_hook(host: str, payload: dict[str, Any], store: Store | None = None) -> dict[str, Any] | None:
@@ -171,10 +89,17 @@ def handle_hook(host: str, payload: dict[str, Any], store: Store | None = None) 
     transcript_path = payload.get("transcript_path")
     prompt = str(payload.get("prompt") or "")
     action = explicit_action(prompt)
+    # An explicit Mindmap invocation is always honoured. Otherwise a launcher
+    # opt-out or a nonpersistent host run must not be attached, given context,
+    # counted, or asked for a checkpoint. A session that is already attached
+    # keeps its normal lifecycle so an explicit start is never half-tracked.
+    exclusion = None if action else tracking_exclusion(host, payload)
     if store is None:
         if not action and not database_path().exists():
             return None
         store = Store()
+    if exclusion and (not session_id or store.session(host, session_id) is None):
+        return None
     project = store.find_project(cwd, active_only=True)
     activated_now = False
 
@@ -188,12 +113,7 @@ def handle_hook(host: str, payload: dict[str, Any], store: Store | None = None) 
     if not project:
         retained = store.find_project(cwd, active_only=False)
         if event == "UserPromptSubmit" and action == "status" and retained:
-            return _additional(
-                event,
-                "MINDMAP_RETAINED_READ_ONLY_V1\n"
-                + store.context(retained["root_path"], include_inactive=True)
-                + "\nTracking is stopped. Report this retained map without registering a session, changing items, or checkpointing the turn.",
-            )
+            return bounded_context(store, retained, event, inactive=True, prompt=prompt)
         if event == "UserPromptSubmit" and action:
             start_command = _command("start", "--root", str(discover_project_root(cwd)))
             if action == "start":
@@ -207,7 +127,7 @@ def handle_hook(host: str, payload: dict[str, Any], store: Store | None = None) 
     if event == "PreToolUse":
         tool_name = str(payload.get("tool_name") or "unknown")
         store.note_tool_activity(
-            project["id"], host, session_id, interaction_id(payload), tool_name
+            project["id"], host, session_id, interaction_id(payload), tool_name, payload
         )
         return None
 
@@ -246,51 +166,20 @@ def handle_hook(host: str, payload: dict[str, Any], store: Store | None = None) 
             host, session_id, turn_id
         )
         effective_action = "sync" if action == "start" and not activated_now else action
-        context = _active_context(
-            store, project, host, session_id, turn_id, effective_action
-        )
+        diagnostics = []
         if turn_status["checkpoint_invalidated"]:
-            context += (
-                "\nMINDMAP_CHECKPOINT_REOPENED_V1\n"
-                "This host supplied another user prompt for an interaction that was already "
-                "checkpointed. The prior map mutations remain visible, but the checkpoint was "
-                "reopened so this added work cannot be silently lost. Review the current revisions "
-                "and record only the additional or corrective semantic changes before finishing; "
-                "do not replay a stale replacement payload."
-            )
+            diagnostics.append("MINDMAP_CHECKPOINT_REOPENED_V1: Another user prompt reopened this interaction. Prior mutations remain; record only additional or corrective changes against current revisions.")
         if prior_unresolved:
-            last_tool = str(prior_unresolved.get("last_tool_name") or "unknown")
-            context += (
-                "\nMINDMAP_PRIOR_CHECKPOINT_MISSING_V1\n"
-                f"Previous interaction {prior_unresolved['interaction_id']} produced a final "
-                f"assistant response but no Mindmap checkpoint; its last observed tool was {last_tool}. "
-                "An unattended host may have denied or failed the injected record command. "
-                "Reconcile any missing semantic changes in this turn, ensure the host is permitted "
-                "to run the exact injected Mindmap record command, and do not claim the previous "
-                "interaction was checkpointed. A successful current checkpoint will cover this warning."
-            )
+            diagnostics.append("MINDMAP_PRIOR_CHECKPOINT_MISSING_V1: A previous final response has no checkpoint. Reconcile missing changes and ensure the host is permitted to run the bound command; do not claim prior completion.")
         if transcript_warning:
-            context += (
-                "\nTranscript import warning: " + transcript_warning
-                + " Continue using durable state and last_assistant_message; do not claim the backfill was complete."
-            )
-        return _additional(
-            event,
-            context,
-        )
+            diagnostics.append("Transcript import warning: source unavailable or incomplete. Continue from durable state and last_assistant_message; do not claim complete backfill.")
+        return bounded_context(store, project, event, host=host, session_id=session_id,
+                               turn_id=turn_id, prompt=prompt, action=effective_action,
+                               diagnostics=diagnostics)
 
     if event == "SessionStart":
-        context = (
-            "MINDMAP_ACTIVE_V1\n"
-            + store.context(project["root_path"])
-            + "\nTracking persists until the explicit mindmap stop action. Every user turn must finish with a Mindmap record checkpoint."
-        )
-        if transcript_warning:
-            context += "\nTranscript import warning: " + transcript_warning
-        return _additional(
-            event,
-            context,
-        )
+        diagnostics = ["Transcript import warning: source unavailable or incomplete; do not claim complete backfill."] if transcript_warning else []
+        return bounded_context(store, project, event, host=host, session_id=session_id, diagnostics=diagnostics)
 
     if event in {"PreCompact", "PostCompact"}:
         # Import side effects are useful, but neither host documents model-visible
@@ -303,79 +192,19 @@ def handle_hook(host: str, payload: dict[str, Any], store: Store | None = None) 
         last_message = payload.get("last_assistant_message")
         if isinstance(last_message, str) and last_message.strip():
             store.add_last_assistant_message(host, session_id, turn_id, last_message)
-        checkpointed = store.is_checkpointed(host, session_id, turn_id)
-        turn = store.turn(host, session_id, turn_id)
-        checkpoint_age = _checkpoint_age_seconds(
-            str(turn.get("checkpointed_at") or "") if turn else None
-        )
-        tool_generation = int(turn.get("tool_activity_generation") or 0) if turn else 0
-        checkpoint_tool_generation = (
-            turn.get("checkpoint_tool_activity_generation") if turn else None
-        )
-        if (
-            checkpointed
-            and not bool(payload.get("stop_hook_active"))
-            and checkpoint_tool_generation is not None
-            and tool_generation > int(checkpoint_tool_generation)
-            and store.invalidate_checkpoint(
-                host,
-                session_id,
-                turn_id,
-                "post_checkpoint_tool_activity",
-                {
-                    "checkpoint_generation": int(checkpoint_tool_generation),
-                    "current_generation": tool_generation,
-                    "last_tool_name": str(turn.get("last_tool_name") or "unknown"),
-                },
-            )
-        ):
-            context = _active_context(store, project, host, session_id, turn_id, None)
-            return {
-                "decision": "block",
-                "reason": (
-                    "Mindmap observed a tool call after this turn's checkpoint "
-                    f"({turn.get('last_tool_name') or 'unknown'}; generation "
-                    f"{checkpoint_tool_generation} -> {tool_generation}). Review the "
-                    "post-checkpoint work, record only additional or corrective changes "
-                    "(or a deliberate empty delta), then finish again.\n"
-                    + context
-                ),
-            }
-        if (
-            checkpointed
-            and not bool(payload.get("stop_hook_active"))
-            and int(checkpoint_tool_generation or 0) == 0
-            and checkpoint_age is not None
-            and checkpoint_age > MAX_CHECKPOINT_TO_STOP_SECONDS
-            and store.invalidate_checkpoint(
-                host,
-                session_id,
-                turn_id,
-                "long_post_checkpoint_window",
-                {"elapsed_seconds": round(checkpoint_age, 3)},
-            )
-        ):
-            context = _active_context(store, project, host, session_id, turn_id, None)
-            return {
-                "decision": "block",
-                "reason": (
-                    "Mindmap's checkpoint predates Stop by "
-                    f"{checkpoint_age:.1f} seconds. The production audit found that long "
-                    "post-checkpoint work can leave plans or completed state unrecorded. "
-                    "Review the current map and final response, record only additional or "
-                    "corrective changes (or a deliberate empty delta), then finish again.\n"
-                    + context
-                ),
-            }
+        turn, reason = store.checkpoint_for_stop(host, session_id, turn_id, MAX_CHECKPOINT_TO_STOP_SECONDS)
+        if not turn:
+            return None
+        checkpointed = bool(turn["checkpointed_at"])
         if not checkpointed and not bool(payload.get("stop_hook_active")):
-            context = _active_context(store, project, host, session_id, turn_id, None)
-            return {
-                "decision": "block",
-                "reason": "Mindmap is active, but this turn has not been checkpointed. "
-                "Review the work, record semantic changes (or an empty operation list), then finish again.\n"
-                + context,
-            }
-        turn = store.turn(host, session_id, turn_id)
+            recovery = {
+                "post_checkpoint_tool_activity": "Later tools left this checkpoint stale. Review the work and record an incremental correction, then finish again.",
+                "long_post_checkpoint_window": "Legacy checkpoint is over 60 seconds old with no observed tool coverage. Review later work and checkpoint again.",
+            }.get(reason, "This turn has not been checkpointed. Review the work, record a delta (empty is valid), then finish again.")
+            diagnostics = ["Transcript import incomplete; use durable state and the final response."] if transcript_warning else []
+            return bounded_context(store, project, event, host=host, session_id=session_id,
+                                   turn_id=turn_id, recovery=recovery, diagnostics=diagnostics,
+                                   action=explicit_action(str(turn.get("prompt_excerpt") or "")) if turn else None)
         if checkpointed and turn and explicit_action(str(turn.get("prompt_excerpt") or "")) == "stop":
             store.deactivate(project["root_path"])
         return None

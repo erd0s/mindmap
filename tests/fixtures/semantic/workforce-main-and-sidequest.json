@@ -43,7 +43,7 @@
           },
           {
             "key": "handoff",
-            "selector": {"all_terms": ["avery", "handoff"]},
+            "selector": {"all_terms": ["avery", "handoff"], "fields": ["id", "title"]},
             "required": false,
             "state": "planned",
             "parent_key": "root",
@@ -104,7 +104,7 @@
           },
           {
             "key": "handoff",
-            "selector": {"all_terms": ["avery", "handoff"]},
+            "selector": {"all_terms": ["avery", "handoff"], "fields": ["id", "title"]},
             "state": "settled",
             "parent_key": "root"
           },

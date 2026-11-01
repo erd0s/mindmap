@@ -1,0 +1,238 @@
+{
+  "schema_version": 1,
+  "id": "dependency-update-scope",
+  "description": "A partial and completed dependency update must preserve every explicitly unchanged receiving branch field.",
+  "project_files": [],
+  "seed_operations": [
+    {
+      "op": "upsert",
+      "id": "onboarding-guide",
+      "title": "Publish the onboarding guide",
+      "summary": "Give new colleagues an introduction they can use independently.",
+      "resume": "Finish the guide and exercises.",
+      "state": "open",
+      "kind": "goal",
+      "parent_id": null
+    },
+    {
+      "op": "upsert",
+      "id": "design-diagrams",
+      "title": "Receive the diagrams from design",
+      "summary": "Design accepted the illustration brief; no assets have arrived.",
+      "resume": "Wait for finished, accessible diagrams.",
+      "state": "open",
+      "kind": "task",
+      "parent_id": "onboarding-guide"
+    },
+    {
+      "op": "upsert",
+      "id": "training-exercises",
+      "title": "Write the training exercises",
+      "summary": "The outline already covers three practical exercises.",
+      "resume": "Draft the three exercises from the agreed outline.",
+      "state": "open",
+      "kind": "thread",
+      "parent_id": "onboarding-guide"
+    },
+    {
+      "op": "upsert",
+      "id": "guide-localization",
+      "title": "Consider guide localization",
+      "summary": "Localization is deferred until the first guide has been used.",
+      "resume": "Review feedback from the first guide before choosing languages.",
+      "state": "planned",
+      "kind": "question",
+      "parent_id": "onboarding-guide"
+    }
+  ],
+  "steps": [
+    {
+      "id": "partial-assets",
+      "prompt": "Planning update only. Design returned two draft diagrams, but accessibility review and the final diagram pack are still outstanding. Update only the existing diagram handoff. The guide goal, training exercises and deferred localization are unchanged; leave them as they are. Do not edit project files or create concepts.",
+      "expected": {
+        "nodes": [
+          {
+            "key": "root",
+            "selector": {
+              "id": "onboarding-guide"
+            },
+            "state": "open",
+            "root": true
+          },
+          {
+            "key": "handoff",
+            "selector": {
+              "id": "design-diagrams"
+            },
+            "state": "open",
+            "parent_key": "root",
+            "resume": "nonempty",
+            "content_required_terms": [
+              "accessibility"
+            ]
+          },
+          {
+            "key": "receiver",
+            "selector": {
+              "id": "training-exercises"
+            },
+            "state": "open",
+            "parent_key": "root",
+            "resume": "nonempty"
+          },
+          {
+            "key": "deferred",
+            "selector": {
+              "id": "guide-localization"
+            },
+            "state": "planned",
+            "parent_key": "root",
+            "resume": "nonempty"
+          }
+        ],
+        "unchanged_ids": [
+          "onboarding-guide",
+          "training-exercises",
+          "guide-localization"
+        ],
+        "max_new_nodes": 0
+      },
+      "reference_items": [
+        {
+          "id": "onboarding-guide",
+          "title": "Publish the onboarding guide",
+          "summary": "Give new colleagues an introduction they can use independently.",
+          "resume": "Finish the guide and exercises.",
+          "state": "open",
+          "kind": "goal",
+          "parent_id": null,
+          "revision": 1
+        },
+        {
+          "id": "design-diagrams",
+          "title": "Receive the diagrams from design",
+          "summary": "Design returned two draft diagrams. Accessibility review remains unfinished.",
+          "resume": "Wait for accessibility review and the final diagram pack.",
+          "state": "open",
+          "kind": "task",
+          "parent_id": "onboarding-guide",
+          "revision": 2
+        },
+        {
+          "id": "training-exercises",
+          "title": "Write the training exercises",
+          "summary": "The outline already covers three practical exercises.",
+          "resume": "Draft the three exercises from the agreed outline.",
+          "state": "open",
+          "kind": "thread",
+          "parent_id": "onboarding-guide",
+          "revision": 1
+        },
+        {
+          "id": "guide-localization",
+          "title": "Consider guide localization",
+          "summary": "Localization is deferred until the first guide has been used.",
+          "resume": "Review feedback from the first guide before choosing languages.",
+          "state": "planned",
+          "kind": "question",
+          "parent_id": "onboarding-guide",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "id": "accepted-assets",
+      "prompt": "Design has now delivered the final diagram pack and finished accessibility review. Settle the existing diagram handoff and clear its waiting resume. The guide goal, training exercises and deferred localization are still unchanged; leave every field of those branches as it is. Do not edit project files or create concepts.",
+      "expected": {
+        "nodes": [
+          {
+            "key": "root",
+            "selector": {
+              "id": "onboarding-guide"
+            },
+            "state": "open",
+            "root": true
+          },
+          {
+            "key": "handoff",
+            "selector": {
+              "id": "design-diagrams"
+            },
+            "state": "settled",
+            "parent_key": "root",
+            "resume": "closed",
+            "content_required_terms": [
+              "accessibility"
+            ]
+          },
+          {
+            "key": "receiver",
+            "selector": {
+              "id": "training-exercises"
+            },
+            "state": "open",
+            "parent_key": "root",
+            "resume": "nonempty"
+          },
+          {
+            "key": "deferred",
+            "selector": {
+              "id": "guide-localization"
+            },
+            "state": "planned",
+            "parent_key": "root",
+            "resume": "nonempty"
+          }
+        ],
+        "unchanged_ids": [
+          "onboarding-guide",
+          "training-exercises",
+          "guide-localization"
+        ],
+        "max_new_nodes": 0
+      },
+      "reference_items": [
+        {
+          "id": "onboarding-guide",
+          "title": "Publish the onboarding guide",
+          "summary": "Give new colleagues an introduction they can use independently.",
+          "resume": "Finish the guide and exercises.",
+          "state": "open",
+          "kind": "goal",
+          "parent_id": null,
+          "revision": 1
+        },
+        {
+          "id": "design-diagrams",
+          "title": "Receive the diagrams from design",
+          "summary": "Design delivered the final diagrams with accessibility review complete.",
+          "resume": "",
+          "state": "settled",
+          "kind": "task",
+          "parent_id": "onboarding-guide",
+          "revision": 3
+        },
+        {
+          "id": "training-exercises",
+          "title": "Write the training exercises",
+          "summary": "The outline already covers three practical exercises.",
+          "resume": "Draft the three exercises from the agreed outline.",
+          "state": "open",
+          "kind": "thread",
+          "parent_id": "onboarding-guide",
+          "revision": 1
+        },
+        {
+          "id": "guide-localization",
+          "title": "Consider guide localization",
+          "summary": "Localization is deferred until the first guide has been used.",
+          "resume": "Review feedback from the first guide before choosing languages.",
+          "state": "planned",
+          "kind": "question",
+          "parent_id": "onboarding-guide",
+          "revision": 1
+        }
+      ]
+    }
+  ]
+}

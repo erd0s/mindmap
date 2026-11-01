@@ -24,6 +24,10 @@ The whole payload is applied in one immediate SQLite transaction. Parent relatio
 
 The payload is a compressed conceptual tree, not a transcript. Do not create one item per message, turn, tool call, file, or chronological event.
 
-One checkpoint may add at most 20 concepts. The durable graph has no lifetime node-count ceiling: a complex project may retain as many distinct concepts as its history requires. It remains limited to 4 roots and 10 levels of depth, and numbered message/turn/prompt/response/tool-call/event ids and titles are rejected. These structural rules preserve causal resolution without forcing unrelated ideas together.
+The durable graph has no lifetime node-count ceiling. The validator-derived [record-limits.md](record-limits.md) gives every numeric bound, including IDs and canonical UTF-8 payload bytes. These are ceilings, not targets. Numbered message/turn/prompt/response/tool-call/event IDs and titles remain rejected. Each normalized ID may appear at most once in a payload.
 
-Titles are limited to 160 characters, concept summaries to 1,200, resume points to 600, and checkpoint summaries to 500. These are ceilings, not targets: write the shortest cold-readable text that preserves the idea.
+The injected `prepare --file -` accepts this same JSON and returns an immutable `commit_command`. Run that command alone as the final foreground Bash/exec_command tool. Retry that exact command on transport failure; intervening ordinary activity requires preparing again. Preparation retains JSON privately in the database until the request is committed or abandoned. It does not change the map.
+
+After further work, use `prepare --supersedes TOKEN` with an incremental correction against current revisions. The token names the checkpoint being replaced; it is not inferred from tool counts. Empty corrections may reuse the same summary and still produce distinct checkpoint history. A competing correction, new prompt, stale item revision or invalid operation rejects the entire attempt. The direct `record` interface also accepts `--supersedes TOKEN`; its identical-payload compatibility replay never refreshes observed tool coverage.
+
+Use the bound `read` command for complete fields and revisions. `--roots`, `--parent ID`, `--id ID` and `--notices` select discovery, children, a concept, or warnings/deletions. Follow `next_cursor` using the same selector and `--cursor VALUE`; a changed map requires refreshing. Full `snapshot` export remains available for deliberate inspection.

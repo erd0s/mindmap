@@ -91,6 +91,8 @@ Create versioned cases from the observed failures and good counterexamples:
 | Later aggregate contradicts an older child resume | Flag or repair the stale text without changing unrelated states. |
 | More than 24 distinct long-lived concepts | Preserve distinct branches; continue rejecting chronology and over-deep chains. |
 | Claude unattended record command cannot execute | Emit an actionable diagnostic and leave the turn visibly uncheckpointed. |
+| A live session under a planned validation phase exposes a bug | The planned parent becomes open, the completed access setup settles, the root and sibling resumes stop describing the started work as future, and release preparation stays planned. |
+| A handoff to another repository returns a partial and then a complete outcome | Record the verified partial outcome on the handoff, settle it only on completion, and leave the project's own unfinished experiments untouched. |
 
 Each fixture stores a short synthetic transcript, labelled concepts and transitions, accepted parent alternatives, and forbidden outputs. It does not store private production transcripts.
 
@@ -238,7 +240,7 @@ The generation strategy wins because it catches fast shell and edit work without
 
 Status: implemented and verified in the current working tree.
 
-- Context and snapshots report warning-only checks for settled nodes with action-like resumes, open/planned summaries that explicitly claim completion, superseded unresolved roots, and settled-to-open reversions that update neither summary nor resume.
+- Context and snapshots report warning-only checks for settled nodes with action-like resumes, open/planned summaries that explicitly claim completion, superseded unresolved roots, settled-to-open reversions that update neither summary nor resume, and planned parents whose open or settled child was created, changed state, or was settled after the parent's last revision. The broader rule "planned parent with any non-planned child" was rejected because preparatory decisions can legitimately coexist with planned work. A last-touched timestamp was rejected as the signal because reparenting or rewording an old settled child would also have fired it.
 - Counterexamples cover “no follow-up,” maintenance, conditional-reopen guidance, and explicitly explained reversions.
 - The agent reconciles warnings from conversation evidence. Deterministic code never auto-settles a causal parent.
 
@@ -292,7 +294,28 @@ A 20-map trial-1 cold-read packet has been generated from the clean reports
 without package, host, model, result, or scorer labels. The independent review,
 production canary of at least 50 completed turns and one week, and repeated CASS
 audit remain.
-See `docs/reliability-evaluation-results-2026-08-31.md` for the exact run record.
+
+Historical results for the two resume-state fixtures come from three trials
+per host on a dirty working tree, rescored offline with scorer v5: Codex 6/6
+and Claude 5/6, with every trial executed and checkpointed. The single miss is
+the known Claude redundant symptom-child behaviour beside an otherwise correct
+transition.
+
+A fresh Codex-only pass on clean source `2924390`, the reviewed generated
+package, the final redacted fixtures and unchanged scorer v5 passed 6/6 trials
+and 9/9 steps, all checkpointed. It used Codex CLI 0.154.0 and `gpt-5.6-sol`,
+three trials per fixture, temporary projects/maps/plugin installation and no
+retries. Fixtures, expectations, scorer and package were unchanged during the
+run. Claude has not been rerun; its 5/6 result remains historical.
+
+The full historical/fresh reports are not comparable because host coverage and
+the handoff fixture digest differ. The matching Codex planned-parent subset
+remains 3/3 with no metric regression, subject to the dirty historical package
+and offline-rescoring limitations. This small sample is bounded acceptance
+evidence, not the broader repeated reliability study specified above. See
+`docs/resume-state-investigation.md` for these results and their limits, and
+`docs/reliability-evaluation-results-2026-08-31.md` for the earlier five-fixture
+controlled comparison.
 
 ## Commands
 

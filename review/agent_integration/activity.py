@@ -33,6 +33,10 @@ def note_pre_tool_activity(host: str, payload: dict[str, Any]) -> None:
     session_id = payload.get("session_id")
     if not database.is_file() or not isinstance(session_id, str) or not session_id:
         return
+    # The fast path never attaches a session. An excluded run has no session
+    # row and therefore no turn to advance, while any attached session keeps
+    # counting its tools regardless of the launcher policy, so no eligibility
+    # check is needed here.
     cwd = Path(str(payload.get("cwd") or os.getcwd())).expanduser().resolve(strict=False)
     interaction_id = payload.get("turn_id") or payload.get("prompt_id")
     if not isinstance(interaction_id, str) or not interaction_id:
@@ -66,12 +70,12 @@ def note_pre_tool_activity(host: str, payload: dict[str, Any]) -> None:
             return
         if interaction_id:
             turn = connection.execute(
-                "SELECT id FROM turns WHERE session_pk = ? AND interaction_id = ?",
+                "SELECT id, tool_activity_generation FROM turns WHERE session_pk = ? AND interaction_id = ?",
                 (session["id"], interaction_id),
             ).fetchone()
         else:
             turn = connection.execute(
-                "SELECT id FROM turns WHERE session_pk = ? ORDER BY id DESC LIMIT 1",
+                "SELECT id, tool_activity_generation FROM turns WHERE session_pk = ? ORDER BY id DESC LIMIT 1",
                 (session["id"],),
             ).fetchone()
         if not turn:
@@ -85,3 +89,11 @@ def note_pre_tool_activity(host: str, payload: dict[str, Any]) -> None:
             """,
             (tool_name, now, turn["id"]),
         )
+        from mindmap.protocol import correlate_commit
+        try:
+            correlate_commit(connection, turn["id"], int(turn["tool_activity_generation"]) + 1, payload)
+        except sqlite3.OperationalError as exc:
+            if str(exc) != "no such table: record_requests":
+                raise
+            # A fast hook may precede the first full Store migration. Preserve
+            # the raw activity signal; absent metadata cannot prove a retry.
