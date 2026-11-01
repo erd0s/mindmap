@@ -14,9 +14,9 @@ make validate
 make mindmap
 ```
 
-Run `build/mindmap doctor`. A missing real agent or desktop app may warn; the database and terminal checks must not fail.
+Run `build/mindmap doctor`. A missing database or desktop app may warn; the database and terminal checks must not fail.
 
-The exported variables isolate processes launched from this shell. Finder and LaunchServices apps do not reliably inherit them. Run the Finder-launched parts of sections 6 and 7 in a disposable macOS user account, recreate the test project there without these overrides, and use only that account's default Mindmap database. Do not run those scenarios against a daily account or a database containing real transcripts; remove the disposable account after retaining the release evidence.
+The exported variables isolate processes launched from this shell. Finder and LaunchServices apps do not reliably inherit them. Run the Finder-launched parts of section 6 in a disposable macOS user account, recreate the test project there without these overrides, and use only that account's default Mindmap database. Do not run those scenarios against a daily account or a database containing real transcripts; remove the disposable account after retaining the release evidence.
 
 ## 2. Terminal basics
 
@@ -33,68 +33,31 @@ Launch `build/mindmap --root "$MINDMAP_HOME_DIR/example"` in the ordinary shell,
 
 Expected: capable terminals remain interactive; limited encodings use ASCII; resize redraws cleanly; <kbd>?</kbd> opens and closes the full shortcut overlay; <kbd>q</kbd> exits. `TERM=dumb` prints one static ASCII snapshot and exits without an escape byte.
 
-## 3. Codex backfill and persistence
+## 3. Paused integration and data preservation
 
-Install the local marketplace/plugin, then begin a fresh Codex session inside the disposable repository. Discuss one future plan, one active thread, one settled decision, and one unresolved question. Halfway through, invoke `$mindmap:manage start`.
+`make validate` includes fixture checks that retired hooks produce no output and do not change an active database or transcript. It also checks setup and refresh rejection, and installs and reinstalls a fake older binary to prove the shell installer never calls setup.
 
-Expected: the first record reconstructs those concepts rather than creating one node per message. The future plan remains `planned`. Finish the session, begin another beneath the same project, and invoke `$mindmap:manage status`; the prior tree should already be present in SessionStart context.
-
-In a host that supports steering, checkpoint a turn and then add another user prompt under the same interaction. Expected: the next injected context contains `MINDMAP_CHECKPOINT_REOPENED_V1`, preserves both prompts, retains the first mutations, and requires an incremental corrective checkpoint.
-
-Next, let the record command run, execute another shell or edit tool immediately, and finish within one second. Expected: Stop reports `post_checkpoint_tool_activity` and requests one reconciliation pass. A long, clean final response after a generation-aware checkpoint must not reopen merely because sixty seconds passed. Also simulate an old zero-generation checkpoint more than 60 seconds before Stop. Expected: the legacy fallback still requests one reconciliation pass.
-
-Pipe a valid record payload larger than 4096 bytes through non-interactive stdin.
-Expected: it commits normally. Repeat by starting `record --file -` in an
-interactive pseudo-terminal. Expected: the command rejects the transport before
-reading JSON and directs the caller to use a pipe, heredoc, or payload file. It
-must not wait for an end-of-transmission character or partially change the map.
-
-In a session with an end-of-turn audio or notification instruction, run that
-side effect before the final record. Expected: Stop accepts the checkpoint
-without an empty corrective pass. Running the same tool after the record must
-still trigger `post_checkpoint_tool_activity`.
-
-Grow the fixture beyond 24 meaningful sibling concepts across several turns. Expected: the map accepts them. A single checkpoint with 21 new concepts, a fifth independent root, a branch deeper than ten levels, and a numbered turn/message node must still fail independently.
-
-Start a separate session outside the project and invoke start. Expected: activation is blocked for that session rather than silently retargeted through a tool workdir.
-
-Run the opt-in behavioral handoff evaluation:
+With both host CLIs available, run the negative marketplace checks:
 
 ```sh
-make test-frontier-handoff
+MINDMAP_REQUIRE_HOST_VALIDATORS=1 python3 scripts/run_host_validators.py
 ```
 
-This uses one real Codex model turn and is intentionally outside `make validate`. Expected: the fixture task completes and its decision becomes a child of the seeded target frontier, not the root or the plausible decoy.
+Each host gets a fresh temporary home without credentials. Adding this checkout as a marketplace must fail because its manifest is absent, and no Mindmap registration may remain. Do not install an old plugin to test the current package. The former live evaluation targets exit with a pause message.
 
-## 4. Claude handoff
+## 4. Manual record and transcript operations
 
-Install the local Claude plugin or launch:
-
-```sh
-claude --plugin-dir ./plugins/claude/mindmap
-```
-
-Begin a fresh local session in the same project, invoke `/mindmap:manage status`, and record one new branch.
-
-Expected: Claude sees the Codex-created map. Codex sees Claude's update in a later turn. Neither host reports a lock error.
-
-Run the isolated unattended-permission case:
-
-```sh
-make test-claude-permission
-```
-
-Expected: built-in shell access and external MCP servers are unavailable, Claude completes without a checkpoint, the snapshot reports one unresolved checkpoint, and a synthetic next prompt receives `MINDMAP_PRIOR_CHECKPOINT_MISSING_V1`. Repeat once with the normal MCP configuration and built-in `Bash` denied. Record the actual tool name used; an MCP shell executor is a valid alternate path and must still advance the tool generation.
+Use `packages/mindmap/bin/mindmap` with the fixture home and data directory above. Explicitly attach a fixture session and transcript, record a causal tree, read its context, and export a snapshot. Confirm that the Go viewer reads the same tree. No agent process is needed. The CLI and store suites cover transcript identity, incremental import, deletion tombstones, checkpoint validation, and large non-interactive payloads.
 
 ## 5. Live terminal update and deletion
 
-Keep the terminal viewer open while the agent records a change.
+Keep the terminal viewer open while the manual Python CLI records a change.
 
 Expected: the graph refreshes within one second and preserves the selected node when it still exists.
 
 Select a non-leaf node, press <kbd>d</kbd>, and cancel. Repeat and confirm.
 
-Expected: cancel changes nothing. Confirm removes the node and all descendants, but not its parent or siblings. `mindmap snapshot` agrees with the display and lists the removed ids under `user_deleted_branches`. The database contains an `item.subtree_deleted` event. Ask the agent to sync: it must not recreate the branch from retained transcript evidence. Then explicitly ask it to restore one deleted concept; the record uses `restore: true`, emits `item.restored`, and removes that id from `user_deleted_branches`.
+Expected: cancel changes nothing. Confirm removes the node and all descendants, but not its parent or siblings. `mindmap snapshot` agrees with the display and lists the removed ids under `user_deleted_branches`. The database contains an `item.subtree_deleted` event. A manual record must not recreate a branch from retained evidence without explicit restoration. To restore one deleted concept, the record uses `restore: true`, emits `item.restored`, and removes that id from `user_deleted_branches`.
 
 ## 6. macOS desktop
 
@@ -108,41 +71,20 @@ In the disposable macOS user account described above, recreate a test project an
 6. Pan and zoom the second project's graph, then record a change in the first project. Confirm that the second window keeps its viewport.
 7. Use Tab and Enter or Space to open a node. Confirm that long, multiline, and Unicode titles stay inside their pills.
 8. Open the delete dialog. Confirm that Cancel receives focus, Tab remains inside the dialog, Escape cancels, and focus returns to the invoking control.
-9. Reopen deletion, let an agent change that branch while the dialog is open, then confirm. Expected: deletion is rejected until the changed branch is reviewed again.
+9. Reopen deletion, use the manual CLI to change that branch while the dialog is open, then confirm. Expected: deletion is rejected until the changed branch is reviewed again.
 10. Confirm a stable branch deletion from one window.
 
 Expected: windows act independently; no browser or terminal appears; each graph refreshes within one second; every window sees a same-process deletion; the correct branch disappears only after confirmation; reopening the app reads the retained state.
 
-## 7. Late agent installation
+## 7. Setup and update refusal
 
-In a clean user profile, install `mindmap` before either agent. The installer should finish with a clear setup notice. Install Codex and run:
+In a disposable profile, run `build/mindmap setup codex`, `setup claude`, `setup --all`, and `setup --refresh --all`. Each must return a pause error without starting an agent, changing client settings, or touching stored data. Installing an agent later must not change this result.
 
-```sh
-mindmap setup codex
-mindmap integrations
-```
+Run the maintained installer twice against fixture release assets. Both runs should install only the terminal binary. Existing released binaries are outside this source check and may still implement their old setup behavior.
 
-Install Claude later and run:
+## 8. Manual stop behavior
 
-```sh
-mindmap setup claude
-mindmap setup --all
-mindmap setup --refresh --all
-mindmap doctor
-```
-
-Expected: setup is idempotent, refresh updates existing installations, each integration is detected independently, and a new local desktop or CLI session can invoke the management skill. Repeat once from Finder-launched Codex Desktop and Claude Desktop, and confirm a lifecycle hook runs without a Python-not-found warning. If either host command is absent from the shell `PATH`, record the host-specific marketplace setup needed before rerunning `mindmap setup`. If the configured interpreter later moves, rerun setup or set `MINDMAP_PYTHON` to an absolute Python 3.10+ path in the host's local environment.
-
-Also force-refresh an unchanged development version whose package bytes differ.
-Expected: Codex removes and re-adds it; Claude preserves plugin data, uninstalls,
-and reinstalls it rather than accepting the same-version update no-op. Compare
-the installed hook and runtime files with the source package after each refresh.
-
-## 8. Stop behavior
-
-Invoke the host's Mindmap stop action and complete its final checkpoint. Begin another session beneath the project.
-
-Expected: the map stays viewable, the project is marked paused, and hooks inject no Mindmap context until another explicit start.
+Run the standalone `stop` command against the fixture project. Confirm the activation flag is cleared and its stored map and evidence remain readable. Hook entry points must be inert before and after the flag changes.
 
 ## 9. Release evidence
 
@@ -157,7 +99,7 @@ Before publishing, retain:
 - `make validate` output
 - race, vet, vulnerability, dependency, and history-secret scan summaries
 - package contents and SHA-256 checksums
-- `gh attestation verify` output for one terminal binary, each plugin, and the DMG
+- `gh attestation verify` output for one terminal binary, the standalone Python CLI archive, and the DMG
 - `codesign`, `spctl`, `notarytool`, and stapler results
 - terminal/tmux capture notes
 - Codex CLI/Desktop and Claude CLI/Desktop scenario results

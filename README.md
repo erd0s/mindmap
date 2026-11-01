@@ -1,8 +1,12 @@
 # Mindmap
 
-Mindmap keeps a small causal map of the work in each coding project. It turns long Codex and Claude Code sessions into goals, decisions, open questions, and explicit next steps without becoming another task manager.
+Mindmap keeps local causal maps of project goals, decisions, open questions, and next steps. The standalone terminal viewer, macOS app, and manual Python CLI remain available.
 
-Mindmap stores its own data on your machine and opens no network listener or remote service of its own.
+**Automatic agent integration is paused as of 1 November 2026.** Mindmap is not currently in use by its owner. Automatic transcript capture, context injection, lifecycle hooks, plugin packaging, and dedicated marketplaces have been removed from the current build. Setup and refresh cannot install an integration. Existing maps and transcripts are retained.
+
+Reuse requires changes and a review of instruction quality and unwanted context injection, followed by an explicit decision about installation scope. Re-enabling and publishing are separate decisions. See [the pause and review boundary](docs/integration-paused.md).
+
+Mindmap stores its data on your machine and opens no network listener or remote service of its own.
 
 ### Desktop
 
@@ -18,76 +22,32 @@ Each node is a meaningful concept, not a message or activity-log entry:
 - `open` - active work, an unresolved question, or a thread worth resuming
 - `settled` - completed work or a resolved decision
 
-## Install
+## Build and use locally
 
-When upgrading an existing agent integration, finish or checkpoint active local
-work and fully quit Codex and Claude CLI or desktop processes before running the
-installer. Setup may replace the cached plugin path used by a running process.
-Begin new agent sessions after installation.
-
-### macOS desktop
-
-Download `mindmap_macos_universal.dmg` from the [latest release](https://github.com/erd0s/mindmap/releases/latest), open it, and drag **Mindmap** to Applications.
-
-The desktop app views and edits maps; the agent plugin records them. To install the plugin and terminal viewer too, run:
+Previously published installers and binaries do not acquire this pause automatically. Build from this checkout to use the paused version:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/erd0s/mindmap/main/install.sh | sh
+make mindmap
+make package
+build/mindmap projects
+build/mindmap --root /path/to/project
 ```
 
-### Terminal viewer
+`make mindmap` builds the Go terminal viewer and CLI. `make package` generates `packages/mindmap` and `dist/mindmap-cli-VERSION.zip`, containing the standalone Python CLI. Python 3.10+ is required for that package; use `packages/mindmap/bin/mindmap --help` to see its manual commands. No plugin, skill, hook registration, or marketplace is packaged.
 
-The same installer supports macOS and Linux:
+The maintained shell and PowerShell installers install only a terminal binary. The shell installer no longer runs setup, including when it downloads an older release. An older binary still contains its old setup behavior; do not use it to configure agents during the pause.
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/erd0s/mindmap/main/install.sh | sh
-```
+The macOS desktop app still views and edits stored maps. Build it on macOS with `./scripts/build_macos_app.sh`.
 
-Windows currently supports the terminal viewer only:
+## Manual maps
 
-```powershell
-irm https://raw.githubusercontent.com/erd0s/mindmap/main/install.ps1 | iex
-```
+The standalone Python CLI retains `start`, `attach`, `transcript`, `record`, `context`, `status`, `snapshot`, and `stop`. These are explicit local operations. `attach` and `transcript` can import a named transcript; `context` prints text only when requested. No agent session receives that text automatically.
 
-Additional architectures available at [GitHub Releases](https://github.com/erd0s/mindmap/releases).
+`start` sets the existing project activation flag for manual records. It does not attach an agent, start capture, or install anything. The terminal and desktop viewers read the same database as the Python CLI.
 
-The Codex and Claude integrations require Python 3.10 or later.
+`mindmap setup`, including `--all`, `--source`, and `--refresh`, exits with a pause error before inspecting agents or writing configuration. `mindmap integrations` remains a read-only diagnostic for old installations. `mindmap doctor` checks standalone components without recommending agent installation.
 
-## Start a map
-
-Open a local coding-agent session inside a project, then invoke Mindmap:
-
-| Action | Codex | Claude Code |
-|---|---|---|
-| Start and reconstruct this session | `$mindmap:manage start` | `/mindmap:manage start` |
-| Reconcile the map with recent work | `$mindmap:manage sync` | `/mindmap:manage sync` |
-| Show the current map | `$mindmap:manage status` | `/mindmap:manage status` |
-| Record the final state and stop tracking | `$mindmap:manage stop` | `/mindmap:manage stop` |
-
-Codex also accepts `$mindmap start`, `$mindmap sync`, `$mindmap status`, and `$mindmap stop`.
-
-Run `mindmap` in the project for the terminal view, or open Mindmap on macOS and choose a coding session from its custom picker.
-
-Mindmap remains active for the whole project directory until you stop it. New local Codex or Claude sessions beneath that directory receive the current map automatically.
-
-## Install an agent later
-
-The installer never assumes which agent you use. If you install one later, repair its integration at any time:
-
-```sh
-mindmap setup codex
-mindmap setup claude
-mindmap setup --all
-mindmap setup --refresh --all
-mindmap integrations
-mindmap doctor
-```
-
-Setup adds the public `erd0s/mindmap` marketplace and installs `mindmap@erd0s-mindmap`. It is idempotent: rerunning it repairs old marketplace IDs and upgrades an outdated plugin. Add `--refresh` to force a marketplace refresh and reinstall.
-
-For Claude Desktop, run `mindmap setup claude` first; afterward, use the Code tab's plugin manager to enable or manage Mindmap. For Codex Desktop, run `mindmap setup codex`, then begin a new local session. If a desktop-only installation does not put `claude` or `codex` on your shell `PATH`, install that host's CLI command or follow its marketplace instructions, then rerun setup. Review and trust the lifecycle hooks when either host asks.
-
-Local desktop coding sessions behave like their CLI counterparts: the same skills and hooks write the same local SQLite database. General ChatGPT or Claude chats are not coding-agent sessions, and remote/cloud sessions cannot share a machine-local database. See [the compatibility contract](docs/compatibility.md) for the precise boundary.
+After uninstalling an old plugin, finish or save each affected session and start a fresh client process to clear cached hooks. Do not remove its maps or transcripts. See [compatibility and restart guidance](docs/compatibility.md).
 
 ## Terminal controls
 
@@ -122,7 +82,7 @@ mindmap status                  # show a compact summary
 mindmap snapshot                # export the current map as JSON
 mindmap open                    # open the current project on macOS
 mindmap delete CONCEPT_ID       # confirm, then delete a branch
-mindmap stop                    # stop automatic tracking; retain the map
+mindmap stop                    # clear the activation flag; retain the map
 ```
 
 Deleting a node also deletes every descendant from the current map. The desktop app and terminal viewer both ask for confirmation. Mindmap remembers those user-deleted ids so retained transcript evidence cannot recreate the branch unless the user explicitly asks to restore it. Provenance events and imported transcript evidence remain in SQLite, so deletion is not secure erasure.
@@ -137,7 +97,7 @@ The database defaults to:
 ${XDG_DATA_HOME:-~/.local/share}/mindmap/mindmap.sqlite3
 ```
 
-Mindmap reads only transcripts named by installed local agent hooks. It stores normalized user and assistant text as private reconstruction evidence, but neither viewer exposes a transcript reader. It sends no data to a Mindmap service because there is no Mindmap service.
+Automatic transcript reading is paused. Existing normalized user and assistant text remains private reconstruction evidence, and the manual Python CLI can import a transcript explicitly. Neither viewer exposes a transcript reader. There is no Mindmap service.
 
 Treat the database as sensitive. Back it up only when no writers are active, or use SQLite's backup tools. Do not place the live database or its WAL files in a file-sync folder.
 
@@ -158,6 +118,6 @@ make validate
 
 The desktop layer pins Wails v3 beta 8 because native multi-window support is a v3 feature. The release workflow builds, signs, notarizes, and staples the macOS app before publishing it.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md), [the architecture notes](docs/architecture.md), and [the functional test runbook](docs/functional-test.md) before changing the storage or hook contract. Maintainers can follow [the release guide](docs/releasing.md). Security reports belong in [SECURITY.md](SECURITY.md).
+Read [CONTRIBUTING.md](CONTRIBUTING.md), [the architecture notes](docs/architecture.md), and [the functional test runbook](docs/functional-test.md) before changing the storage contract. Maintainers can follow [the release guide](docs/releasing.md). Security reports belong in [SECURITY.md](SECURITY.md).
 
 Mindmap is available under the [MIT License](LICENSE).

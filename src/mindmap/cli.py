@@ -47,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="mindmap", description="Small causal concept trees for coding-agent projects")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    start = sub.add_parser("start", aliases=["activate"], help="Enable persistent tracking")
+    start = sub.add_parser("start", aliases=["activate"], help="Activate a project for manual records; automatic integration is paused")
     start.add_argument("--root")
 
     stop = sub.add_parser("stop", aliases=["deactivate"], help="Disable tracking but retain history")

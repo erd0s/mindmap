@@ -29,7 +29,7 @@ try {
     $Destination = Join-Path $InstallDir "mindmap.exe"
     Move-Item -Force $Download $Destination
     Write-Host "Installed mindmap to $Destination"
-    Write-Host "Windows currently supports the terminal viewer. Agent hooks and Mindmap Desktop are macOS/Linux follow-up work."
+    Write-Host "Installed the standalone terminal viewer. Agent integration is paused on all platforms."
     if (($env:PATH -split ';') -notcontains $InstallDir) {
         Write-Host "Add $InstallDir to PATH, then open a new terminal."
     }

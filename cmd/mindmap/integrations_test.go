@@ -2,68 +2,10 @@ package main
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 )
-
-func TestInspectPythonRuntimeResolvesInterpreterSymlink(t *testing.T) {
-	python, err := exec.LookPath("python3")
-	if err != nil {
-		t.Skip("python3 is not installed")
-	}
-	target, err := filepath.EvalSymlinks(python)
-	if err != nil {
-		t.Fatal(err)
-	}
-	shim := filepath.Join(t.TempDir(), "python3")
-	if err := os.Symlink(target, shim); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("MINDMAP_PYTHON", shim)
-	resolved, ok, detail := inspectPythonRuntime()
-	if !ok {
-		t.Fatal(detail)
-	}
-	output, err := exec.Command(target, "-S", "-c", "import os, sys; print(os.path.realpath(sys.executable))").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := strings.TrimSpace(string(output))
-	if resolved != want {
-		t.Fatalf("resolved Python runtime = %q, want %q", resolved, want)
-	}
-}
-
-func TestRememberPythonRuntimeUsesPrivateUserConfig(t *testing.T) {
-	config := t.TempDir()
-	t.Setenv("HOME", config)
-	t.Setenv("XDG_CONFIG_HOME", config)
-	path := filepath.Join(config, "bin", "python3")
-	if err := rememberPythonRuntime(path); err != nil {
-		t.Fatal(err)
-	}
-	target, err := pythonRuntimeConfigPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	contents, err := os.ReadFile(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(contents) != path+"\n" {
-		t.Fatalf("saved Python path = %q", contents)
-	}
-	info, err := os.Stat(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("saved Python path mode = %o", info.Mode().Perm())
-	}
-}
 
 func TestParseCodexIntegrationUsesExactPluginIDAndVersion(t *testing.T) {
 	original := version
@@ -164,100 +106,43 @@ func TestMindmapLocalMarketplaceDetection(t *testing.T) {
 	}
 }
 
-func TestLegacyMigrationRefusesUnverifiedPersonalMarketplace(t *testing.T) {
-	_, err := integrationSetupCommands("codex", marketplaceSource, integrationStatus{Legacy: true}, false)
-	if err == nil || !strings.Contains(err.Error(), "refusing to remove mindmap@personal") {
-		t.Fatalf("error = %v", err)
+func TestSetupAndRefreshCannotTouchClientsOrData(t *testing.T) {
+	home := t.TempDir()
+	bin := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home)
+	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	t.Setenv("MINDMAP_DATA_DIR", filepath.Join(home, "data"))
+	t.Setenv("PATH", bin)
+	for _, name := range []string{"codex", "claude", "python3"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\necho invoked >> \"$HOME/client-invoked\"\nexit 97\n"), 0700); err != nil {
+			t.Fatal(err)
+		}
 	}
-}
-
-func TestLegacyMigrationRemovesOnlyVerifiedPersonalMarketplace(t *testing.T) {
-	commands, err := integrationSetupCommands("codex", marketplaceSource, integrationStatus{
-		Legacy:                 true,
-		LegacyMarketplaceOwned: true,
-	}, false)
+	sentinel := filepath.Join(home, "existing-data")
+	if err := os.WriteFile(sentinel, []byte("retained maps, transcripts and credentials"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"setup"}, {"setup", "codex"}, {"setup", "claude"}, {"setup", "--all"},
+		{"setup", "--refresh", "--all"}, {"setup", "--refresh", "claude"},
+		{"setup", "--dry-run", "--all"}, {"setup", "--source", "somewhere/else", "codex"},
+	} {
+		err := run(args)
+		if err == nil || !strings.Contains(err.Error(), "integration is paused") {
+			t.Fatalf("%v: %v", args, err)
+		}
+	}
+	entries, err := os.ReadDir(home)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := [][]string{
-		{"plugin", "remove", "mindmap@personal"},
-		{"plugin", "marketplace", "remove", "personal"},
-		{"plugin", "marketplace", "add", marketplaceSource},
-		{"plugin", "add", "mindmap@" + marketplaceName},
+	if len(entries) != 1 || entries[0].Name() != "existing-data" {
+		t.Fatalf("setup changed client home: %v", entries)
 	}
-	if !reflect.DeepEqual(commands, want) {
-		t.Fatalf("commands = %#v, want %#v", commands, want)
-	}
-}
-
-func TestClaudeRefreshReinstallsSameVersionAndPreservesPluginData(t *testing.T) {
-	commands, err := integrationSetupCommands("claude", marketplaceSource, integrationStatus{
-		Installed: true,
-		Current:   true,
-	}, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := [][]string{
-		{"plugin", "marketplace", "update", marketplaceName},
-		{"plugin", "uninstall", "mindmap@" + marketplaceName, "--scope", "user", "--keep-data", "--yes"},
-		{"plugin", "install", "mindmap@" + marketplaceName, "--scope", "user", "--yes"},
-	}
-	if !reflect.DeepEqual(commands, want) {
-		t.Fatalf("commands = %#v, want %#v", commands, want)
-	}
-}
-
-func TestClaudeOrdinaryUpgradeUsesUpdate(t *testing.T) {
-	commands, err := integrationSetupCommands("claude", marketplaceSource, integrationStatus{
-		Installed: true,
-	}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := [][]string{
-		{"plugin", "marketplace", "update", marketplaceName},
-		{"plugin", "update", "mindmap@" + marketplaceName, "--scope", "user", "--yes"},
-	}
-	if !reflect.DeepEqual(commands, want) {
-		t.Fatalf("commands = %#v, want %#v", commands, want)
-	}
-}
-
-func TestCodexLocalMarketplaceIsReplacedBeforePublicInstall(t *testing.T) {
-	commands, err := integrationSetupCommands("codex", marketplaceSource, integrationStatus{
-		Installed:        true,
-		LocalMarketplace: true,
-	}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := [][]string{
-		{"plugin", "remove", "mindmap@" + marketplaceName},
-		{"plugin", "marketplace", "remove", marketplaceName},
-		{"plugin", "marketplace", "add", marketplaceSource},
-		{"plugin", "add", "mindmap@" + marketplaceName},
-	}
-	if !reflect.DeepEqual(commands, want) {
-		t.Fatalf("commands = %#v, want %#v", commands, want)
-	}
-}
-
-func TestClaudeLocalMarketplaceIsReplacedAndDataIsPreserved(t *testing.T) {
-	commands, err := integrationSetupCommands("claude", marketplaceSource, integrationStatus{
-		Installed:        true,
-		LocalMarketplace: true,
-	}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := [][]string{
-		{"plugin", "uninstall", "mindmap@" + marketplaceName, "--scope", "user", "--keep-data", "--yes"},
-		{"plugin", "marketplace", "remove", marketplaceName, "--scope", "user"},
-		{"plugin", "marketplace", "add", marketplaceSource},
-		{"plugin", "install", "mindmap@" + marketplaceName, "--scope", "user", "--yes"},
-	}
-	if !reflect.DeepEqual(commands, want) {
-		t.Fatalf("commands = %#v, want %#v", commands, want)
+	content, err := os.ReadFile(sentinel)
+	if err != nil || string(content) != "retained maps, transcripts and credentials" {
+		t.Fatalf("existing data changed: %s, %v", content, err)
 	}
 }

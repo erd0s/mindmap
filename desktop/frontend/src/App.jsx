@@ -90,7 +90,7 @@ function Picker() {
         {projects?.length === 0 && (
           <div className="picker-empty">
             <strong>No coding sessions yet.</strong>
-            <span>In a project directory, run <code>mindmap start</code>, then begin a new agent session.</span>
+            <span>Open an existing local map or create one with the manual CLI. Automatic agent integration is paused.</span>
           </div>
         )}
       </main>

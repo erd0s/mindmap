@@ -53,6 +53,4 @@ case ":$PATH:" in
   *) printf 'Add %s to PATH, then open a new shell.\n' "$install_dir" ;;
 esac
 
-if [ "${MINDMAP_SKIP_SETUP:-0}" != "1" ]; then
-  "$install_dir/mindmap" setup --all || printf '%s\n' 'No agent integration was changed. Run mindmap setup --all after installing Codex or Claude.'
-fi
+printf '%s\n' 'Agent integration is paused. This installer only installs the standalone viewer.'

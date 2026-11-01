@@ -5,7 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mindmap.activity import note_pre_tool_activity, run_pre_tool_hook
+from review.agent_integration.activity import note_pre_tool_activity
+from mindmap.activity import run_pre_tool_hook
 from mindmap.store import Store
 
 

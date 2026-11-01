@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable, Iterator
 
 from mindmap.errors import MindmapError
-from mindmap.lifecycle import handle_hook
+from review.agent_integration.lifecycle import handle_hook
 from mindmap.store import Store
 
 

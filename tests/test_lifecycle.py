@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from mindmap.lifecycle import explicit_action, handle_hook
+from review.agent_integration.lifecycle import explicit_action, handle_hook
 from mindmap.store import Store
 
 

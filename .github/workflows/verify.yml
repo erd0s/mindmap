@@ -25,8 +25,7 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/frontend/package-lock.json
       - run: npm ci --prefix desktop/frontend
-      - run: npm install --global @anthropic-ai/claude-code@2.1.228 @openai/codex@0.147.0
-      - run: MINDMAP_REQUIRE_HOST_VALIDATORS=1 make validate
+      - run: make validate
       - run: make audit
 
   macos-desktop:

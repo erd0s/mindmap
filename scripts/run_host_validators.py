@@ -1,71 +1,53 @@
 #!/usr/bin/env python3
+"""Verify retired marketplace ingestion fails in fresh, credential-free homes."""
 from __future__ import annotations
 
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
-REQUIRE = os.environ.get("MINDMAP_REQUIRE_HOST_VALIDATORS") == "1"
-
-
-def run(command: list[str], *, env: dict[str, str] | None = None) -> None:
-    print("+", " ".join(command))
-    subprocess.run(command, cwd=ROOT, check=True, env=env)
-
-
-def missing(message: str) -> None:
-    if REQUIRE:
-        raise SystemExit(message)
-    print(f"SKIP: {message}")
 
 
 def main() -> int:
-    ran = 0
-    claude = shutil.which("claude")
-    if claude:
-        run([claude, "plugin", "validate", "--strict", "plugins/claude/mindmap"])
-        run([claude, "plugin", "validate", "--strict", "."])
-        ran += 1
-    else:
-        missing("Claude Code CLI is not installed; official Claude validation did not run.")
-
-    codex = shutil.which("codex")
-    if codex:
-        with tempfile.TemporaryDirectory(prefix="mindmap-codex-validate-") as temporary:
-            environment = os.environ.copy()
-            environment["CODEX_HOME"] = temporary
-            run([codex, "plugin", "marketplace", "add", str(ROOT), "--json"], env=environment)
-            run([codex, "plugin", "list", "--available", "--json"], env=environment)
-        ran += 1
-    else:
-        missing("Codex CLI is not installed; Codex marketplace ingestion did not run.")
-
-    validator = Path.home() / ".codex" / "skills" / ".system" / "plugin-creator" / "scripts" / "validate_plugin.py"
-    candidates = [ROOT / ".venv" / "bin" / "python", Path(sys.executable)]
-    python = next(
-        (candidate for candidate in candidates if candidate.is_file() and subprocess.run(
-            [str(candidate), "-c", "import yaml"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        ).returncode == 0),
-        None,
-    )
-    if validator.is_file() and python:
-        run([str(python), str(validator), "plugins/mindmap"])
-        quick_validate = validator.parents[2] / "skill-creator" / "scripts" / "quick_validate.py"
-        if quick_validate.is_file():
-            run([str(python), str(quick_validate), "core/skills/mindmap"])
-        ran += 1
-    else:
-        print("SKIP: supplemental Codex plugin-creator validator needs its system skill and PyYAML.")
-
-    if ran:
-        print(f"Official host validator groups passed: {ran}")
+    for host in ('codex', 'claude'):
+        executable = shutil.which(host)
+        if executable is None:
+            if os.environ.get('MINDMAP_REQUIRE_HOST_VALIDATORS') == '1':
+                raise SystemExit(f'{host} is required for the isolated negative check')
+            print(f'SKIP: {host} is unavailable')
+            continue
+        with tempfile.TemporaryDirectory(prefix=f'mindmap-paused-{host}-') as temporary:
+            home = Path(temporary)
+            (home / ".codex").mkdir()
+            (home / ".claude").mkdir()
+            environment = {
+                'PATH': os.environ.get('PATH', os.defpath),
+                'HOME': temporary,
+                'CODEX_HOME': str(home / '.codex'),
+                'CLAUDE_CONFIG_DIR': str(home / '.claude'),
+                'XDG_CONFIG_HOME': str(home / '.config'),
+                'XDG_DATA_HOME': str(home / '.local/share'),
+                'XDG_CACHE_HOME': str(home / '.cache'),
+            }
+            result = subprocess.run(
+                [executable, 'plugin', 'marketplace', 'add', str(ROOT), '--json'],
+                cwd=home, env=environment, capture_output=True, text=True, timeout=30,
+            )
+            detail = result.stdout + result.stderr
+            if result.returncode == 0 or not any(message in detail for message in ('marketplace.json', 'marketplace root does not contain a supported manifest')):
+                raise SystemExit(f'{host}: expected missing marketplace manifest, got {result.returncode}: {detail}')
+            listing = subprocess.run(
+                [executable, 'plugin', 'marketplace', 'list', '--json'],
+                cwd=home, env=environment, capture_output=True, text=True, timeout=30,
+            )
+            if listing.returncode != 0 or 'erd0s-mindmap' in listing.stdout:
+                raise SystemExit(f'{host}: failed to verify an empty marketplace registration')
+            print(f'PASS: {host} rejects this checkout as a marketplace; fresh home has no Mindmap registration')
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     raise SystemExit(main())

@@ -1,6 +1,6 @@
 # Releasing Mindmap
 
-The first public release publishes a signed universal macOS desktop app, cross-platform terminal binaries, two agent-plugin packages, and SHA-256 checksums. Windows and Linux desktop packages are intentionally deferred.
+**Publishing is a separate decision while integration is paused.** The current workflow builds a signed universal macOS desktop app, cross-platform terminal binaries, a standalone Python CLI archive, and SHA-256 checksums. It no longer builds or publishes agent plugins. Windows and Linux desktop packages are intentionally deferred.
 
 ## Release controls
 
@@ -72,7 +72,7 @@ On macOS, also build and inspect the unsigned universal app:
 make macos-preflight
 ```
 
-Review `CHANGELOG.md`, confirm that the package version and plugin manifests agree, and replace both screenshot placeholders in `docs/images/`.
+Review `CHANGELOG.md`, confirm that the runtime and package versions agree, and replace both screenshot placeholders in `docs/images/`.
 
 Run the `release` workflow manually from `main` before creating the version tag. Approve its protected `release` environment only after confirming the run uses the expected commit. The workflow exercises the production signing, notarization, stapling, Gatekeeper, manifest, and attestation steps, then uploads a `release-candidate-VERSION` artifact. A manual run cannot publish a GitHub Release.
 
@@ -92,7 +92,7 @@ git push origin v0.3.0
 
 Do not push the release tag while this repository is private unless it belongs to an organization on GitHub Enterprise Cloud. [GitHub limits artifact attestations in private and internal repositories to Enterprise Cloud](https://docs.github.com/en/code-security/getting-started/github-security-features#artifact-attestations); public repositories support them on current plans.
 
-The tag starts an independent release gate before GitHub publishes any asset. The workflow rejects a tag that does not match the package version and publishes GitHub build-provenance attestations for the app, plugins, and terminal binaries. Afterward, verify the checksums and attestations, download the DMG on a clean Mac, and repeat the Gatekeeper and notarization checks in the functional runbook.
+The tag starts an independent release gate before GitHub publishes any asset. The workflow rejects a tag that does not match the package version and publishes GitHub build-provenance attestations for the app, standalone Python CLI, and terminal binaries. Afterward, verify the checksums and attestations, download the DMG on a clean Mac, and repeat the Gatekeeper and notarization checks in the functional runbook.
 
 SHA-256 checksums detect corruption but do not authenticate a release by themselves. With the GitHub CLI installed, verify an artifact's repository-bound provenance with:
 

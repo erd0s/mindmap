@@ -2,32 +2,19 @@
 
 ## Product boundary
 
-Mindmap has three local surfaces:
+Automatic agent integration is paused. The retained runtime has three local surfaces: a manual Python CLI, a Go terminal viewer/CLI, and a Wails macOS desktop app. All use the same local SQLite store. No component exposes the database over a network.
 
-```text
-Codex plugin ─┐
-              ├─ bundled Python hook runtime ─┐
-Claude plugin ┘                               │
-                                              ▼
-                                       XDG SQLite store
-                                        ▲           ▲
-                                        │           │
-                           Go terminal/CLI     Wails desktop
-                                                │
-                                          React Flow UI
-```
+`src/mindmap` and `platforms/launcher.py` plus `platforms/run_cli.sh` generate `packages/mindmap`. The package contains no plugin manifest, skill, or hook registration. The former lifecycle and fast-activity algorithms live under `review/agent_integration` for offline fixtures and review. They are excluded from the package.
 
-The plugins reconstruct and record causal maps. The Go command manages projects and renders the terminal UI. The Wails app renders native macOS windows around bundled frontend assets. No component requires an HTTP server, and no component exposes the database over a network.
-
-The Python hook runtime remains bundled in each agent plugin for version 0.3. It has no third-party dependencies. The Go and Python stores share a deliberately small SQLite schema boundary and have independently tested migrations.
+The public lifecycle and activity entry points in `src/mindmap`, and the retired platform hook launchers, return without reading stdin, accessing the store, importing transcripts, emitting context, or blocking an agent. `mindmap setup` and refresh return a pause error; installers never invoke setup.
 
 ## The durable unit is a project
 
 A project is identified by its resolved root path. Activation normally discovers the nearest Git root; a non-Git directory uses the supplied directory. Registry lookup chooses the deepest matching ancestor, so sessions started in subdirectories attach to the same map.
 
-Activation belongs to the project, not one agent session. A later local Codex or Claude session beneath an active root receives the compact map. Stopping changes the project's `active` flag but retains its concepts and evidence.
+Activation belongs to the project, not one agent session. The current runtime does not deliver a map to later agent sessions. Stopping changes the project's `active` flag but retains its concepts and evidence.
 
-The lifecycle hook's session working directory is authoritative. A command-specific `cd` or tool workdir cannot retarget a session. When activation validation fails, the hook leaves the session unattached and directs the user to start a new agent session under the intended root.
+Manual CLI commands resolve the supplied project path. The retired lifecycle rules below are retained as review context and do not run in the shipped runtime.
 
 ## Storage model
 
@@ -43,7 +30,7 @@ SQLite owns the canonical state:
 
 Agent writes use WAL mode, a busy timeout, immediate transactions, deferred parent validation, transcript identity anchors, optimistic item revisions, and payload-verified interaction idempotency. A map mutation and its interaction checkpoint commit together. A distinct later prompt under the same interaction identifier invalidates that checkpoint while preserving its mutations, so the agent can record an incremental correction from current revisions.
 
-`PreToolUse` advances a turn's tool generation before each observed local or MCP tool. `record` saves the current generation with the checkpoint. Stop invalidates a checkpoint when the live generation is newer, which catches fast post-checkpoint work. A zero saved generation means the turn came from an older hook package or a direct command, so only those turns retain the 60-second fallback. Hosted tools and new commitments stated only in final prose remain observable gaps; the mechanism is a strong finality signal, not semantic proof.
+In the retired integration, `PreToolUse` advances a turn's tool generation before each observed local or MCP tool. `record` saves the current generation with the checkpoint. Stop invalidates a checkpoint when the live generation is newer, which catches fast post-checkpoint work. A zero saved generation means the turn came from an older hook package or a direct command, so only those turns retain the 60-second fallback. Hosted tools and new commitments stated only in final prose remain observable gaps; the mechanism is a strong finality signal, not semantic proof.
 
 The agent supplies each record as JSON through a non-interactive pipe or
 heredoc. The record command rejects interactive terminal input because a
@@ -52,11 +39,11 @@ rule is separate from Mindmap's validated 100 KB record limit. Audio, clipboard
 writes, notifications, cleanup, and every other tool-side effect run before the
 record; the agent sends only its final textual response afterward.
 
-The fast activity hook performs one narrow SQLite update without importing the full lifecycle runtime or scanning the schema. On the development machine, 20 direct fast-hook processes took 0.84 seconds, compared with 1.24 seconds through the full lifecycle path. The portable shell launcher raised the measured total to 1.16 seconds for 20 calls. These figures are local benchmarks, not test thresholds.
+The retired fast activity hook performs one narrow SQLite update without importing the full lifecycle runtime or scanning the schema. On the development machine, 20 direct fast-hook processes took 0.84 seconds, compared with 1.24 seconds through the full lifecycle path. The portable shell launcher raised the measured total to 1.16 seconds for 20 calls. These figures are local benchmarks, not test thresholds.
 
 The display route is a stable, lowercased, percent-encoded form of the path beneath the user's home directory. It is an identity and command-line selector, not a URL. Case-folded collisions are rejected rather than merged.
 
-## Lifecycle
+## Historical lifecycle (offline review only)
 
 1. An inactive global hook exits without model-visible output unless it sees an exact Mindmap invocation or finds the current directory in the small active-project registry.
 2. `start` activates the project, attaches the current session, and imports available history.
@@ -87,7 +74,7 @@ The store coordinates concurrent hook processes and preserves atomicity across m
 
 - Signed and notarized universal macOS desktop app; Windows and Linux desktop packages are deferred.
 - Cross-platform terminal binaries for Darwin, FreeBSD, Linux, OpenBSD, and Windows.
-- Agent integrations on macOS and Linux with Python 3.10+.
-- Windows terminal viewing only; Windows agent hooks are deferred.
-- Local coding-agent sessions only; remote/cloud sessions cannot share the local database.
+- Standalone Python CLI with Python 3.10+; agent integration paused.
+- No agent plugin packages or dedicated marketplaces on any platform.
+- Explicit manual transcript import only; remote/cloud sessions cannot share the local database.
 - Wails v3 beta 8 is pinned behind the small desktop service boundary until Wails v3 stabilizes.

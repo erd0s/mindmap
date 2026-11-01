@@ -75,16 +75,16 @@ Usage:
   mindmap <command> [options]
 
 Commands:
-  start          Track the current project persistently
+  start          Activate a project for manual records
   stop           Stop tracking; keep the project's history
   status         Show the project and its current graph
   projects       List every local project map
   snapshot       Export one project as JSON
   delete         Delete a concept and all descendants
   open           Open a project in Mindmap Desktop (macOS)
-  setup          Install or repair Codex and Claude integrations
+  setup          Report that agent integration is paused (no changes)
   integrations   Report installed agent integrations
-  doctor         Check the database, terminal, desktop, and agents
+  doctor         Check the database, terminal, and desktop
   config         Set terminal color and character preferences
 
 Viewer options:
@@ -168,7 +168,7 @@ func changeActivation(arguments []string, active bool) error {
 	if err != nil {
 		return err
 	}
-	state := "tracking"
+	state := "active for manual records; automatic integration paused"
 	if !active {
 		state = "stopped; history retained"
 	}

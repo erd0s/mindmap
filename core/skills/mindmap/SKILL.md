@@ -3,6 +3,9 @@ name: manage
 description: Explicitly start, sync, inspect, or stop a durable visual map that compresses project conversations into a small causal tree across Codex and Claude Code sessions. Use only when the user directly invokes this skill with start, sync, status, or stop; once started, lifecycle hooks keep the active project map current until stopped.
 ---
 
+> Paused: retained for instruction review only. This skill is not packaged or installed. Automatic agent integration requires a separate adoption decision.
+
+
 # Mindmap
 
 Mindmap compresses a project conversation into a small causal tree. Each node is a meaningful thought, goal, question, decision, or explicitly discussed task. The parent relationship explains which thought caused the branch. The result must let someone recover the shape of the work in about ten seconds.

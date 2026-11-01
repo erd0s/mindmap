@@ -5,7 +5,7 @@ GOVULNCHECK_VERSION := v1.7.0
 GO_TOOLCHAIN := go1.25.13
 
 test:
-	PYTHONPATH=src python3 -m unittest discover -s tests -v
+	PYTHONPATH=src:. python3 -m unittest discover -s tests -v
 	go test ./...
 	cd desktop/frontend && npm test
 	cd desktop/frontend && npm run build
@@ -26,10 +26,10 @@ macos-preflight:
 	./scripts/test_macos_app.sh
 
 test-frontier-handoff: package
-	PYTHONPATH=src python3 scripts/test_frontier_handoff.py
+	PYTHONPATH=src:. python3 scripts/test_frontier_handoff.py
 
 eval-reliability:
-	PYTHONPATH=src python3 scripts/evaluate_reliability.py
+	PYTHONPATH=src:. python3 scripts/evaluate_reliability.py
 
 eval-checkpoint-finality:
 	python3 scripts/evaluate_checkpoint_finality.py
@@ -41,12 +41,11 @@ test-claude-permission: package
 	python3 scripts/test_claude_unattended_permission.py
 
 package:
-	python3 scripts/build_plugins.py
+	python3 scripts/build_package.py
 
 validate: test package
 	python3 scripts/check_packages.py
 	python3 scripts/generate_notices.py --check
-	python3 scripts/run_host_validators.py
 
 audit:
 	GOTOOLCHAIN=$(GO_TOOLCHAIN) go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
@@ -60,4 +59,4 @@ validate-strict: test package
 	MINDMAP_REQUIRE_HOST_VALIDATORS=1 python3 scripts/run_host_validators.py
 
 clean:
-	python3 scripts/build_plugins.py --clean
+	python3 scripts/build_package.py --clean
